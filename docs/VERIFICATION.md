@@ -25,7 +25,29 @@ package. Its repository fingerprint stayed unchanged across all six checks.
 | Package content check | UI, SQL, Python source identity and dependency notices checked inside the wheel |
 | Dependency consistency | `pip check` passed. npm production dependency audit reported zero known vulnerabilities at the time of the query |
 | Independent source review | Authorization, transactions, frontend races and owned-process cleanup reviewed by a separate agent. Findings were corrected and focused regressions added |
-| Remote CI and Code Review | Workflow prepared. Remote results will be linked after execution. The exposed Code Review tool reads PR CI diagnostics, so it supplies no semantic review result here |
+| Remote CI and Code Review | Linux build, 33 PostgreSQL API checks, installed restart and seven browser journeys passed. Code Review independently read the exact-head successful CI status and job log. It supplied CI diagnostics, not semantic source review |
+
+## Hosted acceptance
+
+[PR run 40003167787](https://github.com/T92T1914/shipment-exception-workspace/actions/runs/40003167787)
+passed for head `00482dbf80500de6c0a48380be4b3c49eb818fcf`, checked out through
+GitHub's PR merge revision. The corresponding branch run also passed.
+Ubuntu 24.04 used CPython 3.13.3, Node 24.16.0 and the pinned PostgreSQL 18.1
+container manifest. The browser was Playwright's matching Chrome headless shell
+156.0.8078.4, revision 1248.
+
+The hosted job built the source distribution and wheel, passed all 33 API checks,
+installed into a fresh environment outside the checkout, restarted the API and
+passed all seven browser journeys. Its wheel SHA-256 is
+`41a5349be55e1130d4028d0d7a22d8dea9021517b6ba38aaf6e2ce33718ffce9`.
+The run's `installed-workflow-wheel` artifact contains that wheel and the browser
+summary, with a 14-day retention period. A wheel from another build can have a
+different archive hash. These recorded identities describe the actual artifacts.
+
+Later documentation-only commits still run the same workflow. The [PR](https://github.com/T92T1914/shipment-exception-workspace/pull/1)
+and [Actions page](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
+show the exact current revision and status. Successful Windows and Linux checks
+qualify these two executed environments, without a broader compatibility claim.
 
 The browser cases use the real installed API and PostgreSQL. For two recovery
 cases, Playwright forwards a real mutation and then discards its response or
