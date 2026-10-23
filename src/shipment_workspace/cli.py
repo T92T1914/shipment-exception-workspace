@@ -7,13 +7,14 @@ import uvicorn
 
 from .app import create_app
 from .config import Settings
-from .db import initialize, seed
+from .db import initialize, migrate, seed
 
 
 def main():
     parser = argparse.ArgumentParser(description="Synthetic shipment exception workspace")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("init", help="Create schema version 1 in an empty project database")
+    commands.add_parser("init", help="Create schema version 2 in an empty project database")
+    commands.add_parser("migrate", help="Upgrade a stopped version 1 database to version 2 atomically")
     commands.add_parser("seed", help="Insert two synthetic organizations without resetting existing records")
     serve = commands.add_parser("serve", help="Serve the installed React build and API on loopback")
     serve.add_argument("--port", type=int, default=8765)
@@ -23,7 +24,10 @@ def main():
         parser.error("Set SHIPMENT_DATABASE_URL to a dedicated PostgreSQL database")
     if args.command == "init":
         initialize(database_url)
-        print("Schema version 1 initialized.")
+        print("Schema version 2 initialized.")
+    elif args.command == "migrate":
+        migrate(database_url)
+        print("Schema version 2 ready. Existing records, sessions and receipts were preserved.")
     elif args.command == "seed":
         password = os.environ.get("SHIPMENT_DEMO_PASSWORD", "")
         if len(password) < 12:

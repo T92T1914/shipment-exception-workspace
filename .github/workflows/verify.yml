@@ -1,4 +1,4 @@
-name: Verify first workflow
+name: Verify installed workflow
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           "$RUNNER_TEMP/build-env/bin/python" -m pip check
       - name: Exercise actual PostgreSQL authorization and transactions
         run: |
-          "$RUNNER_TEMP/build-env/bin/python" -m pip install --no-deps --no-build-isolation -e .
+          "$RUNNER_TEMP/build-env/bin/python" -m pip install --no-deps dist/*.whl
           "$RUNNER_TEMP/build-env/bin/python" -m pytest -q
       - name: Install and restart the packaged consumer outside the checkout
         run: |

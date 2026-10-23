@@ -1,14 +1,15 @@
 # Shipment Exception Workspace
 
-A small React and Python application for inspecting, assigning and resolving
-synthetic shipment exceptions. Two seeded organizations have separate records.
+A small React and Python application for creating, inspecting, assigning and
+resolving synthetic shipment exceptions. Two seeded organizations have separate
+records.
 PostgreSQL stores the workflow, audit history, sessions and retry receipts.
 
 The useful part is what happens when a change goes wrong. An older browser tab
 cannot overwrite a newer edit. If a request commits but its response is lost,
 retrying the same change returns the saved result without creating a second
-event. The exception update, audit event and saved response share one database
-transaction.
+exception or event. The exception, audit event and saved response share one
+database transaction.
 
 This is a local engineering demonstration with synthetic data. It has no carrier
 integration or operational users. [Executed verification](docs/VERIFICATION.md)
@@ -17,14 +18,16 @@ authorization and transaction boundaries.
 
 ![Desktop queue and resolved synthetic exception](docs/assets/desktop.png)
 
-The [narrow-mobile capture](docs/assets/mobile.png) shows the same workflow on
-a 390-pixel-wide viewport.
+These v0.1.0 captures show the assignment and resolution workflow. The
+[narrow-mobile capture](docs/assets/mobile.png) uses a 390-pixel-wide viewport.
 
 ## The workflow
 
 1. Sign in to one of the two synthetic organizations.
-2. Open an exception and assign it to a member of that organization.
-3. Resolve it with a short explanation. The detail view retains the version and
+2. Choose **New exception** and enter a shipment reference, summary, details and
+   priority. Saving opens the new record with its creation event at version 1.
+3. Assign it to a member of the same organization, then resolve it with a short
+   explanation. The detail view retains the version and
    audit history after a reload.
 4. If another tab changes the record first, refresh before editing again. If a
    response is interrupted, use **Retry same change** while that page remains open.
@@ -32,6 +35,18 @@ a 390-pixel-wide viewport.
 The desktop view shows the queue beside the selected record. Narrow screens
 switch between the queue and detail view. All members within an organization
 have the same permissions.
+
+New reference, summary and details inputs lose outer whitespace. A reference is
+unique within its organization and remains case-sensitive: `NL-2000` and
+`nl-2000` are different references. Existing reference bytes are not rewritten.
+The server chooses the organization, actor, ID and initial open, unassigned
+state. The form cannot choose them.
+
+An identical creation retry returns its saved HTTP 201 response and original ID.
+That response remains historical if someone has since assigned or resolved the
+record. The UI loads current state after success. A second request with another
+key for an existing reference receives a conflict, and the form keeps its text
+so the reference can be corrected.
 
 ## Build and run locally
 
@@ -59,7 +74,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.1.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.2.0-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -110,7 +125,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.1.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.2.0-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -123,10 +138,47 @@ database. The CLI binds only to `127.0.0.1`. Use `serve --port 8766` if the defa
 port is occupied. The frontend is built into the wheel and served from the same
 origin as the API, so the installed application needs no Vite development server.
 
+## Upgrade an existing v0.1.0 database
+
+Version 0.2.0 uses schema version 2. Stop every application process using the
+dedicated database before upgrading. Keep PostgreSQL running and make a private
+backup of that database with your PostgreSQL backup tooling. Keep the backup,
+connection record and existing credentials outside Git. The migration command
+does not make a backup, and this release does not qualify a backup-restoration
+or downgrade procedure.
+
+Build the v0.2.0 wheel as above, then install it into a new environment. Load
+`SHIPMENT_DATABASE_URL` from the retained connection record for the existing
+consumer database. Do not point it at another project or rerun the first-start
+database helper over existing state.
+
+```powershell
+$upgradeEnv = Join-Path $state 'consumer-env-v020'
+py -3.13 -m venv $upgradeEnv
+$upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.2.0-py3-none-any.whl
+& $upgradePython -m shipment_workspace.cli migrate
+if ($LASTEXITCODE -ne 0) { throw 'Migration failed. Keep the application stopped and inspect the error.' }
+& $upgradePython -m shipment_workspace.cli serve
+```
+
+The explicit transaction changes the version marker and audit constraints. It
+preserves existing records, passwords, sessions, audit events and retry receipts,
+including the original assignment and resolution fingerprints. Repeating
+`migrate` on schema 2 makes no further change. An unsupported version is refused.
+`init` and `serve` require the correct schema and do not silently upgrade schema 1.
+
+Do not run `seed` as an upgrade step. Neither migration nor seeding invents
+creation history for existing records. New manually entered exceptions receive
+a creation event, while older seeded records keep their actual saved history.
+For a POSIX installation, invoke `bin/shipment-workspace migrate` from the newly
+installed environment before starting its server.
+
 ## Checks that matter
 
 The API tests require actual PostgreSQL. They truncate and reseed their target
-database, so `SHIPMENT_TEST_DATABASE_URL` must name a disposable test database.
+database, and migration tests drop and recreate its entire `public` schema.
+`SHIPMENT_TEST_DATABASE_URL` must name a disposable test database.
 With the helper above, that is `$db.test_url`. The consumer database is separate.
 An unset test URL causes the database tests to skip, which is not a database pass.
 
@@ -135,16 +187,16 @@ $env:SHIPMENT_TEST_DATABASE_URL = $db.test_url
 & $consumerPython -m pytest tests
 ```
 
-The suite exercises organization isolation, session and CSRF rejection, stale
-versions, conflicting retry keys, concurrent submissions and transaction rollback.
-The installed consumer starts a wheel outside the checkout, restarts the API
-process and retries a committed request. Headless browser journeys cover desktop,
-narrow mobile, stale tabs and interrupted responses against the built application.
+The suite includes organization isolation, session and CSRF rejection, stale
+versions, creation and reference races, conflicting retry keys, rollback and
+schema-upgrade preservation. Installed consumer and headless acceptance exercise
+the built application outside the checkout, including desktop, narrow mobile,
+stale tabs and interrupted responses.
 See [verification](docs/VERIFICATION.md) for commands, actual outcomes and limits.
 
 ## Boundaries and licenses
 
-This first version supports one small local workflow. It has no registration,
+This version supports one small local workflow. It has no registration,
 password recovery, permission roles, reopen action, pagination or production
 deployment route. The audit history is an application record, not a tamper-proof
 compliance log. [Limitations](docs/LIMITATIONS.md) and [security notes](SECURITY.md)

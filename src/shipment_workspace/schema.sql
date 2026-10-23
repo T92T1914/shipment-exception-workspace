@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS schema_version (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-    version integer NOT NULL CHECK (version = 1)
+    version integer NOT NULL CONSTRAINT schema_version_supported CHECK (version = 2)
 );
 CREATE TABLE IF NOT EXISTS organizations (
     id uuid PRIMARY KEY,
@@ -44,15 +44,19 @@ CREATE TABLE IF NOT EXISTS exception_events (
     organization_id uuid NOT NULL,
     exception_id uuid NOT NULL,
     actor_id uuid NOT NULL,
-    action text NOT NULL CHECK (action IN ('assigned', 'resolved')),
+    action text NOT NULL,
     assignee_id uuid,
     note text,
-    version integer NOT NULL CHECK (version > 1),
+    version integer NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (organization_id, exception_id) REFERENCES shipment_exceptions(organization_id, id),
     FOREIGN KEY (organization_id, actor_id) REFERENCES users(organization_id, id),
     FOREIGN KEY (organization_id, assignee_id) REFERENCES users(organization_id, id),
-    UNIQUE (exception_id, version)
+    UNIQUE (exception_id, version),
+    CONSTRAINT exception_events_action_version CHECK (
+        (action = 'created' AND version = 1 AND assignee_id IS NULL AND note IS NULL) OR
+        (action IN ('assigned', 'resolved') AND version > 1)
+    )
 );
 CREATE TABLE IF NOT EXISTS mutation_requests (
     organization_id uuid NOT NULL,
@@ -67,5 +71,5 @@ CREATE TABLE IF NOT EXISTS mutation_requests (
     CHECK ((status_code IS NULL AND response IS NULL) OR
            (status_code IS NOT NULL AND status_code BETWEEN 200 AND 499 AND response IS NOT NULL))
 );
-INSERT INTO schema_version(singleton, version) VALUES (true, 1)
+INSERT INTO schema_version(singleton, version) VALUES (true, 2)
 ON CONFLICT (singleton) DO NOTHING;

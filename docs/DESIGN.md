@@ -1,7 +1,7 @@
 # Design
 
 The application keeps one complete workflow small enough to inspect. React
-renders the queue and detail view. FastAPI authenticates every protected API
+renders intake, the queue and detail view. FastAPI authenticates every protected API
 request and applies organization boundaries. PostgreSQL stores the durable
 records and serializes changes to an individual exception.
 
@@ -37,7 +37,7 @@ with SameSite used as another layer rather than the only check.
 List, detail, member and mutation queries take the organization from the server
 session. An absent exception and another organization's exception both return
 404 from the detail and mutation routes. All members in one organization have
-the same assignment and resolution permissions.
+the same creation, assignment and resolution permissions.
 
 The schema also checks organization membership. Composite foreign keys bind an
 exception's assignee and each event's actor, assignee and exception to the same
@@ -47,7 +47,39 @@ or constitute PostgreSQL row-level security. PostgreSQL 18's
 [constraint documentation](https://www.postgresql.org/docs/18/ddl-constraints.html)
 describes the composite foreign-key mechanism.
 
-## One committed change
+## Create one exception
+
+`POST /api/exceptions` accepts reference, summary, details and an explicit normal
+or high priority. Text must contain content, with reference, summary and details
+limited to 80, 200 and 4,000 characters. Outer whitespace is removed from newly
+admitted text. Reference identity remains case-sensitive within the organization.
+Existing rows are not normalized. The same exact reference in another
+organization is allowed.
+
+The session supplies organization and actor. The server generates the exception
+UUID and chooses open, unassigned, version-one state. Extra fields, including
+attempts to set those server-owned values, are rejected. Input validation stays
+separate from authorization and parameterized SQL, following
+[OWASP's input-validation guidance](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html).
+
+Creation requires a UUID `Idempotency-Key`. In one transaction, the server
+reserves that actor's key, inserts the exception, adds its version-one `created`
+audit event and stores the HTTP 201 response. It exposes that response only after
+commit. An unexpected error rolls back the record, event and receipt together.
+
+The database's unique organization/reference constraint decides concurrent
+duplicates. A targeted `ON CONFLICT (organization_id, reference) DO NOTHING`
+insert produces either one new row or a 409 reference-conflict receipt. A
+preliminary unlocked lookup would leave a race between checking and inserting.
+PostgreSQL 18 documents this behavior in its
+[INSERT reference](https://www.postgresql.org/docs/18/sql-insert.html).
+
+Two identical same-key submissions share the original ID and saved 201 response.
+Two distinct keys for the same reference can create only one row. A saved
+creation response is historical: replaying version 1 after a later assignment or
+resolution does not reset the current record.
+
+## Assignment, resolution and shared receipts
 
 Each exception begins at version 1. Assignment and resolution requests include
 the version displayed to the editor and a UUID `Idempotency-Key`. An idempotency
@@ -76,6 +108,12 @@ insert and lookup into one statement could leave that lookup using an earlier
 snapshot. This follows PostgreSQL 18's documented
 [READ COMMITTED and ON CONFLICT behavior](https://www.postgresql.org/docs/18/transaction-iso.html).
 
+Creation, assignment and resolution share the actor/organization/key namespace.
+Creation fingerprints contain the distinct `created` action and validated input.
+Assignment and resolution keep their original fingerprint shape, including the
+exception ID, so receipts from schema version 1 remain replayable. Reusing a key
+for another action or content returns 409 rather than changing its meaning.
+
 Two distinct keys with the same expected version contend for the same record.
 One change succeeds, and the other observes a stale version. Two identical
 requests with the same key share one committed receipt. Expected application
@@ -95,6 +133,12 @@ Network failures, unreadable responses and server errors offer **Retry same
 change**. They do not silently mint a new key. This pending state lives in the
 page's memory, so closing or reloading the page loses that recovery action.
 
+Pending intake keeps its submitted fields and blocks another form submission or
+navigation to a different record. A duplicate reference is a confirmed conflict,
+so the form remains available for correction with a new intended request. After
+an accepted creation, the UI selects the new ID and loads current detail rather
+than installing the historical receipt as current state.
+
 A version conflict requires a refresh before editing again. The browser does not
 merge competing assignments or resolution notes. Request identity checks also
 keep a late detail response from replacing the record selected by newer browser
@@ -110,15 +154,26 @@ boundaries, not a claim of complete application security.
 ## Durable state and packaging
 
 The database contains organizations, users, sessions, exceptions, audit events
-and mutation receipts. Initialization creates schema version 1 in a dedicated
-database. Seeding inserts synthetic records without resetting existing passwords
-or work. There is no schema upgrade framework in this release.
+and mutation receipts. Initialization creates schema version 2 in a dedicated
+database. The application and seeder require that version. They do not silently
+migrate an existing schema. Seeding inserts synthetic records without resetting
+existing passwords or work and does not fabricate creation events.
 
-The wheel contains the Python application, schema, built frontend and dependency
+The explicit `migrate` command upgrades the known version-one schema in a single
+transaction after application processes have stopped. It locks the version table
+before changing audit constraints and the version marker. Existing domain rows,
+users, sessions, events and receipts retain their values. Old seeded records do
+not gain invented actors, timestamps or creation history. Repeating migration on
+schema 2 returns without changing it, and other versions are refused. This is one
+bounded upgrade, with no general migration framework or downgrade route. The
+operator must make a private database backup before invoking it.
+
+The wheel contains the Python application, schema, upgrade SQL, built frontend and dependency
 notices. Python runtime dependencies are installed separately under their own
 licenses. The local database helper owns a new cluster under an explicit external
 state directory. It does not alter an installed database service.
 
-[Verification](VERIFICATION.md) records the actual database races, rollback,
-installed consumer, API restart and browser results. None of those checks
+[Verification](VERIFICATION.md) records executed checks and their revisions,
+including database, installed-consumer and browser outcomes. Source and test
+definitions alone do not establish that a new path passed. None of those checks
 establishes production load capacity or an operational deployment.

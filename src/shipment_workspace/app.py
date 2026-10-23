@@ -6,7 +6,8 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from uuid import UUID
+from typing import Literal
+from uuid import UUID, uuid4
 
 import anyio
 from argon2.exceptions import VerificationError
@@ -19,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from .config import Settings
-from .db import EXCEPTION_SELECT, PASSWORDS, connect, exception_record
+from .db import EXCEPTION_SELECT, PASSWORDS, connect, exception_record, require_current_schema
 
 COOKIE = "shipment_session"
 MAX_BODY = 16384
@@ -43,6 +44,25 @@ class Login(Input):
 class Assign(Input):
     expected_version: int = Field(ge=1, le=2147483646, strict=True)
     assignee_id: UUID | None
+
+
+class Create(Input):
+    reference: str = Field(min_length=1, max_length=80)
+    summary: str = Field(min_length=1, max_length=200)
+    details: str = Field(min_length=1, max_length=4000)
+    priority: Literal["normal", "high"]
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def trim_priority(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("reference", "summary", "details")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("Enter text for each field")
+        return value.strip()
 
 
 class Resolve(Input):
@@ -101,6 +121,7 @@ class BodyLimit:
 
 
 def create_app(settings: Settings):
+    require_current_schema(settings.database_url)
     @asynccontextmanager
     async def lifespan(app):
         anyio.to_thread.current_default_thread_limiter().total_tokens = 2
@@ -226,25 +247,65 @@ def create_app(settings: Settings):
             WHERE e.organization_id=%s AND e.exception_id=%s ORDER BY e.version""", (current["organization_id"], exception_id)).fetchall()
         return {"exception": record, "events": events}
 
-    def mutate(action, exception_id, body, request, current, conn, key):
+    def prepare_intent(canonical, request, current, key):
         csrf(request, current)
         try:
             request_key = UUID(key or "")
         except ValueError:
             raise Problem(422, "invalid_idempotency_key", "Supply a UUID Idempotency-Key for this change.")
-        canonical = {"action": action, "exception_id": str(exception_id), **body.model_dump(mode="json")}
         fingerprint = hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return request_key, fingerprint
+
+    def reserve(conn, org, actor, request_key, fingerprint):
+        inserted = conn.execute("""INSERT INTO mutation_requests(organization_id,actor_id,key,fingerprint)
+            VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING key""", (org, actor, request_key, fingerprint)).fetchone()
+        if inserted:
+            return None
+        # A new READ COMMITTED statement sees the concurrent insert after it
+        # commits. A single INSERT/SELECT CTE could keep the older snapshot.
+        receipt = conn.execute("SELECT * FROM mutation_requests WHERE organization_id=%s AND actor_id=%s AND key=%s", (org, actor, request_key)).fetchone()
+        if receipt["fingerprint"] != fingerprint:
+            raise Problem(409, "idempotency_conflict", "This retry key belongs to a different change.")
+        return receipt
+
+    def save_receipt(conn, org, actor, request_key, status, result):
+        conn.execute("UPDATE mutation_requests SET status_code=%s,response=%s WHERE organization_id=%s AND actor_id=%s AND key=%s",
+                     (status, Jsonb(result), org, actor, request_key))
+
+    @app.post("/api/exceptions")
+    def create(body: Create, request: Request, current=Depends(principal),
+               conn=Depends(connection), idempotency_key: str | None = Header(default=None)):
+        canonical = {"action": "created", **body.model_dump(mode="json")}
+        request_key, fingerprint = prepare_intent(canonical, request, current, idempotency_key)
         org, actor = current["organization_id"], current["user_id"]
         replay = False
         with conn.transaction():
-            inserted = conn.execute("""INSERT INTO mutation_requests(organization_id,actor_id,key,fingerprint)
-                VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING key""", (org, actor, request_key, fingerprint)).fetchone()
-            if not inserted:
-                # A separate statement gets a fresh READ COMMITTED snapshot after a
-                # concurrent INSERT commits. A single INSERT/SELECT CTE would not.
-                receipt = conn.execute("SELECT * FROM mutation_requests WHERE organization_id=%s AND actor_id=%s AND key=%s", (org, actor, request_key)).fetchone()
-                if receipt["fingerprint"] != fingerprint:
-                    raise Problem(409, "idempotency_conflict", "This retry key belongs to a different change.")
+            receipt = reserve(conn, org, actor, request_key, fingerprint)
+            if receipt:
+                status, result, replay = receipt["status_code"], receipt["response"], True
+            else:
+                exception_id = uuid4()
+                inserted = conn.execute("""INSERT INTO shipment_exceptions(id,organization_id,reference,summary,details,priority)
+                    VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id,reference) DO NOTHING RETURNING id""",
+                    (exception_id, org, body.reference, body.summary, body.details, body.priority)).fetchone()
+                if inserted:
+                    conn.execute("""INSERT INTO exception_events(organization_id,exception_id,actor_id,action,version)
+                        VALUES (%s,%s,%s,'created',1)""", (org, exception_id, actor))
+                    status, result = 201, {"exception": jsonable_encoder(exception_record(conn, org, exception_id))}
+                else:
+                    status, result = 409, {"error": {"code": "reference_conflict", "message": "This reference already exists in your organization."}}
+                save_receipt(conn, org, actor, request_key, status, result)
+        return JSONResponse(result, status, headers={"Idempotency-Replayed": str(replay).lower()})
+
+    def mutate(action, exception_id, body, request, current, conn, key):
+        # Keep this canonical shape unchanged so v1 receipts survive migration.
+        canonical = {"action": action, "exception_id": str(exception_id), **body.model_dump(mode="json")}
+        request_key, fingerprint = prepare_intent(canonical, request, current, key)
+        org, actor = current["organization_id"], current["user_id"]
+        replay = False
+        with conn.transaction():
+            receipt = reserve(conn, org, actor, request_key, fingerprint)
+            if receipt:
                 status, result, replay = receipt["status_code"], receipt["response"], True
             else:
                 record = conn.execute("SELECT * FROM shipment_exceptions WHERE organization_id=%s AND id=%s FOR UPDATE", (org, exception_id)).fetchone()
@@ -268,8 +329,7 @@ def create_app(settings: Settings):
                     status, result = 200, {"exception": jsonable_encoder(exception_record(conn, org, exception_id))}
                 except Problem as exc:
                     status, result = exc.status, exc.body
-                conn.execute("UPDATE mutation_requests SET status_code=%s,response=%s WHERE organization_id=%s AND actor_id=%s AND key=%s",
-                             (status, Jsonb(result), org, actor, request_key))
+                save_receipt(conn, org, actor, request_key, status, result)
         # The response is not exposed until the transaction has committed.
         return JSONResponse(result, status, headers={"Idempotency-Replayed": str(replay).lower()})
 
