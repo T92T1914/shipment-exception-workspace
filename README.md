@@ -16,10 +16,11 @@ integration or operational users. [Executed verification](docs/VERIFICATION.md)
 records the tested revision and results. [Design](docs/DESIGN.md) explains the
 authorization and transaction boundaries.
 
-![Desktop queue and resolved synthetic exception](docs/assets/desktop.png)
+![Manually created synthetic exception with creation, assignment and resolution history](docs/assets/desktop-intake.png)
 
-These v0.1.0 captures show the assignment and resolution workflow. The
-[narrow-mobile capture](docs/assets/mobile.png) uses a 390-pixel-wide viewport.
+The [narrow-mobile capture](docs/assets/mobile-intake.png) shows the same intake
+workflow on a 390-pixel-wide viewport. The earlier v0.1.0 captures remain in
+`docs/assets` with their original bytes.
 
 ## The workflow
 
