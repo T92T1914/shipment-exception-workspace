@@ -17,6 +17,7 @@ import time
 from uuid import uuid4
 
 import httpx
+import psycopg
 
 
 def main():
@@ -82,7 +83,7 @@ def main():
 
     try:
         server = start()
-        with httpx.Client(base_url=base, trust_env=False) as client:
+        with httpx.Client(base_url=base, trust_env=False) as client, httpx.Client(base_url=base, trust_env=False) as login_client:
             html = client.get("/")
             assert html.status_code == 200 and '/assets/' in html.text
             assert "script-src 'self'" in html.headers["content-security-policy"]
@@ -104,10 +105,28 @@ def main():
             created = client.post("/api/exceptions", json=create_body, headers=create_headers)
             assert created.status_code == 201, created.text
             created_id = created.json()["exception"]["id"]
+            login_csrf = login_client.get("/api/session").json()["csrf_token"]
+            login_headers = {"Origin": base, "X-CSRF-Token": login_csrf}
+            # The successful sign-in above charged one admission. Charge39
+            # further verifications without authenticating this separate client.
+            for index in range(39):
+                subject = "unknown-one@synthetic.example" if index < 20 else "unknown-two@synthetic.example"
+                denied = login_client.post("/api/login", json={"email": subject, "password": "Synthetic wrong password"}, headers=login_headers)
+                assert denied.status_code == 401, denied.text
+            limited = login_client.post("/api/login", json={"email": "unknown-one@synthetic.example", "password": password}, headers=login_headers)
+            assert limited.status_code == 429 and 1 <= int(limited.headers["Retry-After"]) <= 60
+            with psycopg.connect(database_url) as conn:
+                before_admission = conn.execute("SELECT attempts,reset_at FROM login_global").fetchall(), conn.execute("SELECT * FROM login_identifiers ORDER BY identifier_hash").fetchall()
             # Treat the committed response as lost, then start a fresh app process.
             stop(server)
             server = None
             server = start()
+            still_limited = login_client.post("/api/login", json={"email": "jules@harbor.example", "password": password}, headers=login_headers)
+            assert still_limited.status_code == 429
+            assert login_client.get("/api/session").json()["authenticated"] is False
+            with psycopg.connect(database_url) as conn:
+                after_admission = conn.execute("SELECT attempts,reset_at FROM login_global").fetchall(), conn.execute("SELECT * FROM login_identifiers ORDER BY identifier_hash").fetchall()
+            assert after_admission == before_admission
             replay = client.post(path, json=body, headers=headers)
             assert replay.status_code == 200 and replay.json() == first.json()
             assert replay.headers["idempotency-replayed"] == "true"
@@ -120,6 +139,11 @@ def main():
             creation_detail = client.get(f"/api/exceptions/{created_id}").json()
             assert creation_detail["exception"]["version"] == 1
             assert [event["action"] for event in creation_detail["events"]] == ["created"]
+        # Browser journeys are a separate synthetic campaign. Expire only this
+        # disposable consumer's admission fixtures, preserving sessions/history.
+        with psycopg.connect(database_url) as conn:
+            conn.execute("UPDATE login_global SET reset_at=clock_timestamp()-interval '1 second'")
+            conn.execute("UPDATE login_identifiers SET reset_at=clock_timestamp()-interval '1 second'")
         state = {"base_url": base, "port": port, "pid": server.pid, "demo_password": password,
                  "installed_module": probe, "python": python}
         (cwd / "consumer-state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -127,8 +151,10 @@ def main():
              "built_ui_served": True, "dependency_notices_served": True,
              "app_process_restart": True, "persistent_session_and_receipt": True,
              "one_committed_effect_after_retry": True, "creation_receipt_after_restart": True,
-             "one_creation_event_after_restart_retry": True}, indent=2), encoding="utf-8")
-        print("Installed wheel, built UI, API process restart and durable retry accepted.")
+             "one_creation_event_after_restart_retry": True, "login_budget_survived_restart": True,
+             "correct_password_throttled_at_global_limit": True,
+             "admission_fixture_expired_before_browser_campaign": True}, indent=2), encoding="utf-8")
+        print("Installed wheel, built UI, API restart, durable retry and login admission accepted.")
         if args.keep_server:
             server = None
     finally:

@@ -8,7 +8,7 @@ from argon2 import PasswordHasher
 from psycopg.rows import dict_row
 
 PASSWORDS = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def connect(database_url):
@@ -22,7 +22,7 @@ def initialize(database_url):
         if exists:
             version = conn.execute("SELECT version FROM schema_version").fetchall()
             if version != [{"version": SCHEMA_VERSION}]:
-                raise RuntimeError("Database schema is not version 2. Stop the app and run shipment-workspace migrate for version 1.")
+                raise RuntimeError("Database schema is not version 3. Stop the app and run shipment-workspace migrate for version 1 or 2.")
         elif conn.execute("""SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                              WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') LIMIT 1""").fetchone():
             raise RuntimeError("Schema metadata is missing from a nonempty database. Restore its metadata or use an empty dedicated database.")
@@ -33,11 +33,11 @@ def require_current_schema(database_url):
     with connect(database_url) as conn:
         exists = conn.execute("SELECT to_regclass('public.schema_version') AS name").fetchone()["name"]
         if not exists or conn.execute("SELECT version FROM schema_version").fetchall() != [{"version": SCHEMA_VERSION}]:
-            raise RuntimeError("Database requires schema version 2. Run init for an empty database or stop the app and migrate version 1.")
+            raise RuntimeError("Database requires schema version 3. Run init for an empty database or stop the app and migrate version 1 or 2.")
 
 
 def migrate(database_url):
-    """Upgrade the known v1 schema atomically. Never backfill fictional history."""
+    """Upgrade known v1/v2 schemas atomically without rewriting retained data."""
     with connect(database_url) as conn, conn.transaction():
         exists = conn.execute("SELECT to_regclass('public.schema_version') AS name").fetchone()["name"]
         if not exists:
@@ -48,9 +48,11 @@ def migrate(database_url):
         versions = conn.execute("SELECT version FROM schema_version FOR UPDATE").fetchall()
         if versions == [{"version": SCHEMA_VERSION}]:
             return
-        if versions != [{"version": 1}]:
-            raise RuntimeError("Unsupported database schema. Only version 1 can be migrated to version 2.")
-        conn.execute(files("shipment_workspace").joinpath("migrate_v1_v2.sql").read_text(encoding="utf-8"))
+        if versions not in ([{"version": 1}], [{"version": 2}]):
+            raise RuntimeError("Unsupported database schema. Only version 1 or 2 can be migrated to version 3.")
+        if versions == [{"version": 1}]:
+            conn.execute(files("shipment_workspace").joinpath("migrate_v1_v2.sql").read_text(encoding="utf-8"))
+        conn.execute(files("shipment_workspace").joinpath("migrate_v2_v3.sql").read_text(encoding="utf-8"))
 
 
 def seed(database_url, password):

@@ -21,14 +21,16 @@ from psycopg.types.json import Jsonb
 
 from .config import Settings
 from .db import EXCEPTION_SELECT, PASSWORDS, connect, exception_record, require_current_schema
+from .login_admission import reserve_login
 
 COOKIE = "shipment_session"
 MAX_BODY = 16384
 
 
 class Problem(Exception):
-    def __init__(self, status, code, message, **extra):
+    def __init__(self, status, code, message, headers=None, **extra):
         self.status = status
+        self.headers = headers
         self.body = {"error": {"code": code, "message": message, **extra}}
 
 
@@ -135,7 +137,7 @@ def create_app(settings: Settings):
 
     @app.exception_handler(Problem)
     async def problem_handler(request, exc):
-        return JSONResponse(exc.body, exc.status)
+        return JSONResponse(exc.body, exc.status, headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_handler(request, exc):
@@ -207,8 +209,13 @@ def create_app(settings: Settings):
     @app.post("/api/login")
     def login(body: Login, request: Request, current=Depends(session), conn=Depends(connection)):
         csrf(request, current)
+        identifier = body.email.strip().lower()
+        retry_after = reserve_login(conn, identifier)
+        if retry_after:
+            raise Problem(429, "login_throttled", "Too many sign-in attempts. Wait before trying again.",
+                          headers={"Retry-After": str(retry_after)})
         user = conn.execute("SELECT u.*,o.name AS organization_name FROM users u JOIN organizations o ON o.id=u.organization_id WHERE email=%s",
-                            (body.email.strip().lower(),)).fetchone()
+                            (identifier,)).fetchone()
         try:
             PASSWORDS.verify(user["password_hash"] if user else dummy_hash, body.password)
         except VerificationError:

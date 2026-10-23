@@ -32,9 +32,10 @@ def database_url():
 def database(database_url):
     with psycopg.connect(database_url, autocommit=True, row_factory=dict_row) as conn:
         conn.execute(
-            "TRUNCATE sessions, mutation_requests, exception_events, "
+            "TRUNCATE login_identifiers, sessions, mutation_requests, exception_events, "
             "shipment_exceptions, users, organizations RESTART IDENTITY CASCADE"
         )
+        conn.execute("UPDATE login_global SET attempts=0,reset_at=clock_timestamp() WHERE singleton=true")
     seed(database_url, TEST_PASSWORD)
     return database_url
 

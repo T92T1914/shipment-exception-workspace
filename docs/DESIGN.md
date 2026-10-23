@@ -47,6 +47,57 @@ or constitute PostgreSQL row-level security. PostgreSQL 18's
 [constraint documentation](https://www.postgresql.org/docs/18/ddl-constraints.html)
 describes the composite foreign-key mechanism.
 
+## Durable login admission
+
+`POST /api/login` reserves permission to perform a password verification before
+calling Argon2. Each normalized identifier has a budget of 20, and the application
+shares a global budget of 40. Each counter has a fixed 60-second window starting
+with its first admitted request after expiry. Identifier and global expiries can
+differ. This is an all-verification admission policy: correct and incorrect
+passwords both use a reservation, and success never resets or refunds it.
+
+The identifier uses the existing email lookup normalization, `strip().lower()`.
+PostgreSQL stores a SHA-256 digest of that value in admission state. Known and
+unknown addresses follow the same path. The digest avoids another plaintext
+copy but does not anonymize a guessable email address or prevent dictionary
+recovery. No submitted password belongs in these counters.
+
+Session, exact Origin, CSRF and input checks precede admission. One short database
+transaction locks the singleton global row, reads `clock_timestamp()` after that
+lock has been acquired, removes expired identifier rows and checks both budgets.
+A request may have waited for the lock, so transaction-start or pre-lock time
+could place it in an expired window. An allowed request increments both counters
+and commits before password verification. No lock is held during Argon2.
+
+Denied requests create no new identifier row and do no password verification.
+They commit expiry cleanup and return a generic 429 with a positive `Retry-After`
+for the later of the blocking expiries. Denied requests do not extend a live
+window. A storage failure propagates before verification rather than bypassing
+admission. A process interruption after a committed reservation still consumes
+that slot. Cookie renewal, a new anonymous session and API restart do not clear
+the durable counters.
+
+Under the application's serialized writer, each global window admits at most
+40 new identifier rows. An identifier lasts 60 seconds from its first admission,
+so unexpired identifiers span at most two adjacent global windows. This gives
+an upper bound of 80 identifier rows, with expired rows removed on the next
+admission check. It is a design derivation under these writer and clock
+assumptions, not a measured storage or attack-resistance result. A database
+administrator can bypass those application assumptions.
+
+The global counter is a local resource guard and has an availability cost: one
+caller can temporarily block everyone else's new login. Fixed windows permit
+bursts on opposite sides of a boundary and do not impose a sliding-window rate.
+No source-IP or `X-Forwarded-For` value selects a budget. This policy does not
+rate-limit anonymous-session creation or other API routes, prevent distributed
+attacks, add MFA or establish production capacity.
+
+[OWASP's authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+discusses threshold, duration and lockout-denial tradeoffs. Its failed-attempt
+examples differ from this application's all-verification resource policy. The
+chosen numbers and no-reset behavior are local design choices, with no claimed
+OWASP or NIST compliance.
+
 ## Create one exception
 
 `POST /api/exceptions` accepts reference, summary, details and an explicit normal
@@ -128,6 +179,13 @@ the detail after success rather than treating the saved response as current stat
 
 ## Browser recovery
 
+The sign-in form handles 429 separately from an incorrect-password response.
+It reads `Retry-After`, announces a temporary wait and keeps the email editable.
+A countdown can disable submission temporarily, but it is only a local hint.
+The next explicit submission is always checked by the server. A missing or
+unusable delay leaves a generic wait message rather than inventing a deadline.
+No password is automatically resubmitted when the countdown ends.
+
 The UI retains the key and body of a change while its result is uncertain.
 Network failures, unreadable responses and server errors offer **Retry same
 change**. They do not silently mint a new key. This pending state lives in the
@@ -153,23 +211,27 @@ boundaries, not a claim of complete application security.
 
 ## Durable state and packaging
 
-The database contains organizations, users, sessions, exceptions, audit events
-and mutation receipts. Initialization creates schema version 2 in a dedicated
-database. The application and seeder require that version. They do not silently
+The database contains organizations, users, sessions, exceptions, audit events,
+mutation receipts and login-admission counters. Initialization creates schema
+version 3 in a dedicated database. The application and seeder require that
+version. They do not silently
 migrate an existing schema. Seeding inserts synthetic records without resetting
 existing passwords or work and does not fabricate creation events.
 
-The explicit `migrate` command upgrades the known version-one schema in a single
-transaction after application processes have stopped. It locks the version table
-before changing audit constraints and the version marker. Existing domain rows,
-users, sessions, events and receipts retain their values. Old seeded records do
-not gain invented actors, timestamps or creation history. Repeating migration on
-schema 2 returns without changing it, and other versions are refused. This is one
-bounded upgrade, with no general migration framework or downgrade route. The
-operator must make a private database backup before invoking it.
+The explicit `migrate` command upgrades a known version-one or version-two schema
+to version 3 in a single transaction after application processes have stopped.
+It locks the version table, applies the earlier audit change when starting from
+version 1, then creates admission state and changes the version marker. Existing
+domain rows, password hashes, sessions, events and receipts retain their values
+and original receipt fingerprints. Old seeded records do not gain invented
+actors, timestamps or creation history. Repeating migration on schema 3 returns
+without changing it, and other versions are refused. This is a bounded upgrade,
+with no general migration framework or downgrade route. The operator must make
+a private database backup before invoking it. Acceptance uses disposable legacy
+fixtures without migrating retained accepted consumer databases.
 
-The wheel contains the Python application, schema, upgrade SQL, built frontend and dependency
-notices. Python runtime dependencies are installed separately under their own
+The wheel contains the Python application, schema, upgrade SQL, built frontend
+and dependency notices. Python runtime dependencies are installed separately under their own
 licenses. The local database helper owns a new cluster under an explicit external
 state directory. It does not alter an installed database service.
 

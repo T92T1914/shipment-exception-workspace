@@ -27,11 +27,19 @@ const emptyCreateFields: CreateFields = { reference: '', summary: '', details: '
 class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  retryAfterSeconds?: number;
+  constructor(status: number, code: string, message: string, retryAfterSeconds?: number) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function retryDelay(value: string | null): number | undefined {
+  if (value === null || !/^\d+$/.test(value.trim())) return undefined;
+  const seconds = Number(value);
+  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 60 ? seconds : undefined;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, expectedStatus?: number): Promise<T> {
@@ -43,16 +51,20 @@ async function request<T>(path: string, init: RequestInit = {}, expectedStatus?:
     throw new ApiError(0, 'transport_error', 'The connection ended before a response arrived.');
   }
   if (response.status === 204) return undefined as T;
+  const retryAfterSeconds = response.status === 429 ? retryDelay(response.headers.get('Retry-After')) : undefined;
   let body;
   try {
     body = await response.json();
   } catch {
+    if (response.status === 429) {
+      throw new ApiError(429, 'login_throttled', 'Too many sign-in attempts. Wait before trying again.', retryAfterSeconds);
+    }
     throw new ApiError(0, 'unreadable_response', 'The server response could not be read.');
   }
   if (!response.ok) {
     const error = body && typeof body === 'object' ? body.error : undefined;
     throw new ApiError(response.status, typeof error?.code === 'string' ? error.code : 'request_failed',
-      typeof error?.message === 'string' ? error.message : 'The request could not be completed.');
+      typeof error?.message === 'string' ? error.message : 'The request could not be completed.', retryAfterSeconds);
   }
   if (expectedStatus !== undefined && response.status !== expectedStatus) {
     throw new ApiError(0, 'unconfirmed_response', 'The response did not confirm the saved change.');
@@ -90,6 +102,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState('alex@northline.example');
   const [password, setPassword] = useState('');
+  const [loginWait, setLoginWait] = useState<{ deadline: number | null; seconds: number; missingDelay: boolean } | null>(null);
   const [items, setItems] = useState<ShipmentException[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(selectedFromHash);
@@ -164,6 +177,19 @@ function App() {
   }, [handleError]);
 
   useEffect(() => {
+    const deadline = loginWait?.deadline;
+    if (deadline === undefined || deadline === null) return;
+    const timer = window.setInterval(() => {
+      const seconds = Math.max(0, Math.ceil((deadline - performance.now()) / 1000));
+      setLoginWait(current => {
+        if (current?.deadline !== deadline || current.seconds === seconds) return current;
+        return { ...current, seconds, deadline: seconds === 0 ? null : deadline };
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [loginWait?.deadline]);
+
+  useEffect(() => {
     const onHash = () => {
       setSelectedId(selectedFromHash());
       setCreating(window.location.hash === '#new');
@@ -194,16 +220,24 @@ function App() {
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
-    if (!session || busy) return;
-    setBusy(true); setError('');
+    const deadline = loginWait?.deadline;
+    if (!session || busy || (typeof deadline === 'number' && performance.now() < deadline)) return;
+    setBusy(true); setError(''); setLoginWait(null);
     try {
       const result = await request<Session>('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token },
         body: JSON.stringify({ email, password }),
       });
-      clearPrivateState(); setSession(result); setPassword(''); setNotice('');
+      clearPrivateState(); setSession(result); setPassword(''); setNotice(''); setLoginWait(null);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Sign-in could not be completed.');
+      if (failure instanceof ApiError && failure.status === 429) {
+        const delay = failure.retryAfterSeconds;
+        setLoginWait({ deadline: delay === undefined ? null : performance.now() + delay * 1000,
+          seconds: delay ?? 0, missingDelay: delay === undefined });
+        setError('Too many sign-in attempts. Wait before trying again.');
+      } else {
+        setError(failure instanceof Error ? failure.message : 'Sign-in could not be completed.');
+      }
     }
     finally { setBusy(false); }
   }
@@ -327,6 +361,7 @@ function App() {
   const locked = busy || !!pending || conflict;
   const current = detail?.exception;
   const events = detail?.events ?? [];
+  const loginBlocked = loginWait !== null && loginWait.seconds > 0;
 
   return <>
     <div className="demo-banner"><span className="demo-dot" aria-hidden="true" /> Synthetic workspace <span className="demo-separator">/</span> Fictional organizations and shipment records</div>
@@ -340,10 +375,11 @@ function App() {
       <section className="login-card" aria-labelledby="sign-in-title"><p className="eyebrow">Organization access</p><h2 id="sign-in-title">Sign in to the workspace</h2><p className="muted">Use an account and password from your local seed setup.</p>
         {error && <div className="message error" role="alert">{error}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
+        {loginWait && <div id="login-wait" className="login-wait" role="status" aria-live="polite" aria-atomic="true"><p>{loginWait.seconds > 0 ? `Try again in ${loginWait.seconds} ${loginWait.seconds === 1 ? 'second' : 'seconds'}.` : loginWait.missingDelay ? 'The server did not provide a usable retry time. Wait before trying again.' : 'The countdown has ended. You can try signing in again.'}</p><p>{loginWait.missingDelay ? 'The server decides when sign-in is allowed.' : 'This countdown is a local reminder. The server decides when sign-in is allowed.'}</p></div>}
         {loading ? <p role="status">Opening a session...</p> : !session ? <div><p>The session could not be opened.</p><button className="button primary" onClick={() => window.location.reload()}>Retry connection</button></div> : <form onSubmit={event => void signIn(event)}>
           <label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} maxLength={254} required disabled={busy} />
           <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={busy} />
-          <button className="button primary full-width" type="submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign in'}</button>
+          <button className="button primary full-width" type="submit" disabled={busy || loginBlocked} aria-describedby={loginWait ? 'login-wait' : undefined}>{busy ? 'Signing in...' : 'Sign in'}</button>
         </form>}
         <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Northline: alex@northline.example</span><span>Harbor: jules@harbor.example</span><p>Each organization sees its own records.</p></div>
       </section>

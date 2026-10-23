@@ -49,6 +49,27 @@ record. The UI loads current state after success. A second request with another
 key for an existing reference receives a conflict, and the form keeps its text
 so the reference can be corrected.
 
+## Sign-in admission
+
+Before checking a password, the server reserves a PostgreSQL admission slot.
+It permits 20 verifications per normalized email and 40 across the application
+in each counter's fixed 60-second window. Email normalization removes outer
+whitespace and lowercases the address. Known and unknown addresses follow the
+same policy. A successful sign-in uses a slot too and does not reset either
+budget. New browser sessions and API restarts do not reset the saved counters.
+
+When a budget is full, the API returns a generic HTTP 429 and `Retry-After`.
+The sign-in form shows a temporary wait and keeps the email editable. Its
+countdown is a local reminder, and the server decides whether the next explicit
+submission is allowed. The UI does not retry a password automatically.
+
+This bounds one kind of local password-verification work. One caller can spend
+the global budget and temporarily block other users' new sign-ins. Fixed windows
+also allow bursts across a boundary. Other routes, including anonymous-session
+creation, are not rate-limited by this policy. See the
+[design](docs/DESIGN.md#durable-login-admission) and
+[limits](docs/LIMITATIONS.md) before treating it as broader abuse protection.
+
 ## Build and run locally
 
 The initial local combination uses CPython 3.13.3, Node 24.16.0, npm 11.13.0
@@ -75,7 +96,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.2.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.3.0-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -126,7 +147,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.2.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.3.0-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -139,35 +160,38 @@ database. The CLI binds only to `127.0.0.1`. Use `serve --port 8766` if the defa
 port is occupied. The frontend is built into the wheel and served from the same
 origin as the API, so the installed application needs no Vite development server.
 
-## Upgrade an existing v0.1.0 database
+## Upgrade an existing v0.1.0 or v0.2.0 database
 
-Version 0.2.0 uses schema version 2. Stop every application process using the
+Version 0.3.0 uses schema version 3. Stop every application process using the
 dedicated database before upgrading. Keep PostgreSQL running and make a private
 backup of that database with your PostgreSQL backup tooling. Keep the backup,
 connection record and existing credentials outside Git. The migration command
 does not make a backup, and this release does not qualify a backup-restoration
 or downgrade procedure.
 
-Build the v0.2.0 wheel as above, then install it into a new environment. Load
+Build the v0.3.0 wheel as above, then install it into a new environment. Load
 `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v020'
+$upgradeEnv = Join-Path $state 'consumer-env-v030'
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.2.0-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.3.0-py3-none-any.whl
 & $upgradePython -m shipment_workspace.cli migrate
 if ($LASTEXITCODE -ne 0) { throw 'Migration failed. Keep the application stopped and inspect the error.' }
 & $upgradePython -m shipment_workspace.cli serve
 ```
 
-The explicit transaction changes the version marker and audit constraints. It
-preserves existing records, passwords, sessions, audit events and retry receipts,
-including the original assignment and resolution fingerprints. Repeating
-`migrate` on schema 2 makes no further change. An unsupported version is refused.
-`init` and `serve` require the correct schema and do not silently upgrade schema 1.
+The command upgrades schema 1 or 2 to schema 3 in one transaction, applying the
+earlier audit-constraint upgrade when needed and adding admission state. It
+preserves existing records, password hashes, sessions, audit events and retry
+receipts, including their original fingerprint bytes. Repeating `migrate` on
+schema 3 makes no further change. An unsupported version is refused. `init`,
+`seed` and `serve` require the current schema and do not silently upgrade an old
+database. Upgrade tests use disposable fixtures, rather than modifying a
+previously accepted local consumer database.
 
 Do not run `seed` as an upgrade step. Neither migration nor seeding invents
 creation history for existing records. New manually entered exceptions receive
@@ -193,6 +217,10 @@ versions, creation and reference races, conflicting retry keys, rollback and
 schema-upgrade preservation. Installed consumer and headless acceptance exercise
 the built application outside the checkout, including desktop, narrow mobile,
 stale tabs and interrupted responses.
+Admission checks cover durable budgets, concurrent reservations, expiry and
+temporary sign-in denial. Tests that control counter timestamps or the database
+clock are synthetic boundary checks, not measurements of attack resistance or
+real elapsed-time throughput.
 See [verification](docs/VERIFICATION.md) for commands, actual outcomes and limits.
 
 ## Boundaries and licenses
