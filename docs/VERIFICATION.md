@@ -56,6 +56,11 @@ responses and loss of the retry key on a JSON 500. The final navigation ordering
 also needed an early selection guard before advancing the request generation.
 The PostgreSQL and browser regressions exercise the corrected boundaries.
 
+The first hosted workflow attempts failed before application setup. The runner
+passed a single-quoted health command through Docker's argument parser, which
+treated its `-U` as a Docker flag. The service options now use a double-quoted
+health command. This was a CI setup failure, not a failed API assertion.
+
 The initial PostgreSQL helper hung waiting for an inherited subprocess pipe
 after the database started. File-based subprocess capture corrected the helper,
 and the exact owned cluster was stopped. The first installed-consumer readiness
