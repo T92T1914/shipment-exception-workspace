@@ -1,0 +1,91 @@
+name: Verify first workflow
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-installed-app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
+        env:
+          POSTGRES_USER: shipment_ci
+          POSTGRES_PASSWORD: synthetic-ci-only-password
+          POSTGRES_DB: shipment_test
+        ports: ['5432:5432']
+        options: >-
+          --cpus=2
+          --health-cmd "pg_isready -U shipment_ci -d shipment_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SHIPMENT_TEST_DATABASE_URL: postgresql://shipment_ci:synthetic-ci-only-password@127.0.0.1:5432/shipment_test
+      SHIPMENT_DATABASE_URL: postgresql://shipment_ci:synthetic-ci-only-password@127.0.0.1:5432/shipment_consumer
+      GOMAXPROCS: '2'
+      RAYON_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      PGOPTIONS: '-c max_parallel_workers_per_gather=0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13.3'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.16.0'
+          package-manager-cache: false
+      - name: Install locked dependencies and build the wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/build-env"
+          "$RUNNER_TEMP/build-env/bin/python" -m pip install -r requirements-lock.txt
+          npm --prefix frontend ci --ignore-scripts --no-fund
+          npm --prefix frontend run build
+          "$RUNNER_TEMP/build-env/bin/python" tools/build_notices.py
+          git diff --exit-code -- THIRD_PARTY_NOTICES.txt src/shipment_workspace/THIRD_PARTY_NOTICES.txt
+          "$RUNNER_TEMP/build-env/bin/python" -m build --no-isolation
+          "$RUNNER_TEMP/build-env/bin/python" tools/check_package.py
+          "$RUNNER_TEMP/build-env/bin/python" -m pip check
+      - name: Exercise actual PostgreSQL authorization and transactions
+        run: |
+          "$RUNNER_TEMP/build-env/bin/python" -m pip install --no-deps --no-build-isolation -e .
+          "$RUNNER_TEMP/build-env/bin/python" -m pytest -q
+      - name: Install and restart the packaged consumer outside the checkout
+        run: |
+          "$RUNNER_TEMP/build-env/bin/python" -c 'import os,psycopg; c=psycopg.connect(os.environ["SHIPMENT_TEST_DATABASE_URL"],autocommit=True); c.execute("CREATE DATABASE shipment_consumer"); c.close()'
+          python -m venv "$RUNNER_TEMP/consumer-env"
+          "$RUNNER_TEMP/consumer-env/bin/python" -m pip install -r requirements-lock.txt dist/*.whl
+          "$RUNNER_TEMP/build-env/bin/python" tools/installed_consumer.py --python "$RUNNER_TEMP/consumer-env/bin/python" --output "$RUNNER_TEMP/consumer" --keep-server
+      - name: Exercise built desktop and mobile journeys in isolated Chromium
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium-headless-shell
+          eval "$("$RUNNER_TEMP/build-env/bin/python" -c 'import json,os,shlex; s=json.load(open(os.environ["RUNNER_TEMP"]+"/consumer/consumer-state.json")); print("export WORKSPACE_BASE_URL="+shlex.quote(s["base_url"])); print("export WORKSPACE_DEMO_PASSWORD="+shlex.quote(s["demo_password"]))')"
+          npm run test:e2e
+      - name: Preserve the verified wheel and test summary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installed-workflow-wheel
+          path: |
+            dist/*.whl
+            frontend/test-results/results.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Stop the owned application process
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/consumer/consumer-state.json" ]; then
+            "$RUNNER_TEMP/build-env/bin/python" -c 'import json,os,signal; s=json.load(open(os.environ["RUNNER_TEMP"]+"/consumer/consumer-state.json")); os.kill(s["pid"], signal.SIGTERM)'
+          fi
