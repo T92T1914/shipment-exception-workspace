@@ -1,0 +1,2 @@
+# Preserve the accepted v0.1.0 fixture bytes on Windows and POSIX checkouts.
+tests/fixtures/schema_v1.sql -text
