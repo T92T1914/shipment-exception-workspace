@@ -99,6 +99,23 @@ browser. Exact-revision hosted outcomes are separate from the local results
 above. Code Review exposes CI diagnostics; the semantic review described above
 is an independent agent review.
 
+[PR run 40031520062](https://github.com/T92T1914/shipment-exception-workspace/actions/runs/40031520062)
+passed for head `6ff198bd79059a215b209185e72da8b676ea4d29`, tested through
+GitHub's PR merge revision. It passed all 74 PostgreSQL checks, the installed
+API restart and all 14 browser journeys on Ubuntu 24.04. The matching browser
+was Chrome headless shell 156.0.8078.4, Playwright revision 1248. Code Review
+read the exact-head successful job and its diagnostic log. Its initial live-log
+read returned HTTP 502, an access error rather than a failed application check.
+
+That hosted wheel's SHA-256 is
+`455e8821562f901bd218b220f01c5fb5020ce57c407751806c1758cea1f9bf38`.
+The run's installed-workflow-wheel artifact includes the wheel and browser
+summary, with a 14-day retention period. A tag is not a permanent downloadable
+release asset. Later documentation-only revisions run the same workflow. The
+[pull request](https://github.com/T92T1914/shipment-exception-workspace/pull/2)
+and Actions show their exact current statuses; an earlier green run does not
+accept a newer head automatically.
+
 Build and install using the README. Run `python -m pytest tests` using the
 installed environment and an explicit disposable SHIPMENT_TEST_DATABASE_URL.
 These tests truncate records and migration tests replace its entire public
