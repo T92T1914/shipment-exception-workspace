@@ -51,6 +51,7 @@ py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
 $env:GOMAXPROCS = '2'
+$env:RAYON_NUM_THREADS = '2'
 npm --prefix frontend ci --ignore-scripts
 npm --prefix frontend run build
 & $buildPython tools/build_notices.py
@@ -105,7 +106,7 @@ the `bin/python` executable layout:
 python3.13 -m venv /path/to/private/build-env
 /path/to/private/build-env/bin/python -m pip install -r requirements-lock.txt
 GOMAXPROCS=2 npm --prefix frontend ci --ignore-scripts
-GOMAXPROCS=2 npm --prefix frontend run build
+GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
