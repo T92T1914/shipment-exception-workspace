@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools==84.2.1", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shipment-exception-workspace"
+version = "0.1.0"
+description = "A small synthetic shipment exception workflow with PostgreSQL transactions."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
+dependencies = [
+  "fastapi==0.161.1",
+  "uvicorn==0.54.0",
+  "psycopg[binary]==3.3.6",
+  "argon2-cffi==25.1.0",
+]
+
+[project.scripts]
+shipment-workspace = "shipment_workspace.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+shipment_workspace = ["schema.sql", "THIRD_PARTY_NOTICES.txt", "static/*", "static/assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
