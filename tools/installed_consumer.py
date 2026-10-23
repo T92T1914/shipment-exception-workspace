@@ -33,7 +33,9 @@ def main():
     password = password_file.read_text(encoding="utf-8")
     env = {**os.environ, "SHIPMENT_DEMO_PASSWORD": password, "PYTHONPATH": ""}
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    python = str(args.python.resolve())
+    # POSIX venv executables are often symlinks. Resolving the link selects the
+    # base interpreter and loses the installed environment we need to exercise.
+    python = str(args.python.absolute())
     cwd = args.output.resolve()
     for command in ("init", "seed"):
         subprocess.run([python, "-m", "shipment_workspace.cli", command], cwd=cwd, env=env, check=True, creationflags=flags)

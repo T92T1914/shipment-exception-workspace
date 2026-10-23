@@ -61,6 +61,12 @@ passed a single-quoted health command through Docker's argument parser, which
 treated its `-U` as a Docker flag. The service options now use a double-quoted
 health command. This was a CI setup failure, not a failed API assertion.
 
+After container setup was corrected, the Linux build and all 33 PostgreSQL API
+checks passed. The installed-consumer runner then selected the base interpreter
+by resolving the virtual environment executable's symlink. Preserving the
+absolute venv path corrects that runner error. It was not a wheel import failure
+inside the intended installed environment.
+
 The initial PostgreSQL helper hung waiting for an inherited subprocess pipe
 after the database started. File-based subprocess capture corrected the helper,
 and the exact owned cluster was stopped. The first installed-consumer readiness
