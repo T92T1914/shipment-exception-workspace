@@ -12,14 +12,17 @@ type ShipmentException = {
 };
 type Member = { id: string; name: string; email: string };
 type AuditEvent = {
-  id: string; action: 'assigned' | 'resolved'; actor_name: string;
+  id: string; action: 'created' | 'assigned' | 'resolved'; actor_name: string;
   assignee_name: string | null; note: string | null; version: number; created_at: string;
 };
 type Detail = { exception: ShipmentException; events: AuditEvent[] };
-type PendingChange = {
-  id: string; action: 'assign' | 'resolve'; key: string;
+type CreateFields = { reference: string; summary: string; details: string; priority: 'normal' | 'high' };
+type ChangeIntent = { action: 'create'; body: CreateFields } | {
+  id: string; action: 'assign' | 'resolve';
   body: { expected_version: number; assignee_id: string | null } | { expected_version: number; resolution: string };
 };
+type PendingChange = Readonly<{ id?: string; action: 'create' | 'assign' | 'resolve'; key: string; url: string; body: string }>;
+const emptyCreateFields: CreateFields = { reference: '', summary: '', details: '', priority: 'normal' };
 
 class ApiError extends Error {
   status: number;
@@ -31,7 +34,7 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, expectedStatus?: number): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, { ...init, credentials: 'same-origin', cache: 'no-store' });
@@ -47,7 +50,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(0, 'unreadable_response', 'The server response could not be read.');
   }
   if (!response.ok) {
-    throw new ApiError(response.status, body.error?.code ?? 'request_failed', body.error?.message ?? 'The request could not be completed.');
+    const error = body && typeof body === 'object' ? body.error : undefined;
+    throw new ApiError(response.status, typeof error?.code === 'string' ? error.code : 'request_failed',
+      typeof error?.message === 'string' ? error.message : 'The request could not be completed.');
+  }
+  if (expectedStatus !== undefined && response.status !== expectedStatus) {
+    throw new ApiError(0, 'unconfirmed_response', 'The response did not confirm the saved change.');
   }
   return body as T;
 }
@@ -55,6 +63,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 function selectedFromHash(): string | null {
   const match = /^#exception\/([a-zA-Z0-9-]+)$/.exec(window.location.hash);
   return match ? match[1] : null;
+}
+
+function creationMatchesIntent(record: ShipmentException, serializedBody: string): boolean {
+  try {
+    const intended = JSON.parse(serializedBody) as CreateFields;
+    return record.reference === intended.reference && record.summary === intended.summary &&
+      record.details === intended.details && record.priority === intended.priority &&
+      record.status === 'open' && record.assignee_id === null && record.assignee_name === null &&
+      record.resolution === null && typeof record.updated_at === 'string';
+  } catch {
+    return false;
+  }
 }
 
 function dateLabel(value: string): string {
@@ -73,6 +93,8 @@ function App() {
   const [items, setItems] = useState<ShipmentException[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(selectedFromHash);
+  const [creating, setCreating] = useState(window.location.hash === '#new');
+  const [createFields, setCreateFields] = useState<CreateFields>({ ...emptyCreateFields });
   const [detail, setDetail] = useState<Detail | null>(null);
   const [assignment, setAssignment] = useState('');
   const [resolution, setResolution] = useState('');
@@ -94,6 +116,7 @@ function App() {
   const clearPrivateState = useCallback(() => {
     listRequest.current++; detailRequest.current++;
     setItems([]); setMembers([]); setDetail(null); setResolution('');
+    setCreating(false); setCreateFields({ ...emptyCreateFields });
     setPending(null); pendingRef.current = null;
   }, []);
 
@@ -143,6 +166,7 @@ function App() {
   useEffect(() => {
     const onHash = () => {
       setSelectedId(selectedFromHash());
+      setCreating(window.location.hash === '#new');
       if (!pendingRef.current) setError('');
       setNotice(''); setConflict(false);
     };
@@ -205,31 +229,59 @@ function App() {
     finally { setBusy(false); }
   }
 
-  async function sendChange(change: PendingChange) {
+  async function sendChange(intent: ChangeIntent | PendingChange) {
     if (!session || mutationLock.current) return;
     mutationLock.current = true;
     setBusy(true); setError(''); setNotice(''); setConflict(false);
-    pendingRef.current = change; setPending(change);
+    const user = activeUser.current;
+    let change: PendingChange | null = null;
     let committed = false;
     try {
-      await request<{ exception: ShipmentException }>(`/api/exceptions/${change.id}/${change.action}`, {
+      // Preparation belongs inside cleanup. A key-generation failure must leave
+      // the form editable without dispatching or retaining an incomplete intent.
+      change = 'key' in intent ? intent : Object.freeze({
+        ...('id' in intent ? { id: intent.id } : {}), action: intent.action,
+        key: crypto.randomUUID(),
+        url: intent.action === 'create' ? '/api/exceptions' : `/api/exceptions/${intent.id}/${intent.action}`,
+        body: JSON.stringify(intent.body),
+      });
+      pendingRef.current = change; setPending(change);
+      const result = await request<{ exception: ShipmentException }>(change.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token, 'Idempotency-Key': change.key },
-        body: JSON.stringify(change.body),
-      });
+        body: change.body,
+      }, change.action === 'create' ? 201 : 200);
+      if (!result?.exception || typeof result.exception.id !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.exception.id) ||
+          !Number.isInteger(result.exception.version) || result.exception.version < 1 ||
+          (change.id !== undefined && result.exception.id !== change.id) ||
+          (change.action === 'create' && (result.exception.version !== 1 || !creationMatchesIntent(result.exception, change.body)))) {
+        throw new ApiError(0, 'unreadable_response', 'The saved record could not be confirmed from the response.');
+      }
       committed = true;
+      if (user !== activeUser.current) return;
       pendingRef.current = null; setPending(null);
       setResolution('');
-      setNotice(change.action === 'assign' ? 'Assignment saved.' : 'Exception resolved.');
+      if (change.action === 'create') {
+        setCreateFields({ ...emptyCreateFields }); setCreating(false); setFilter('all');
+        window.location.hash = `exception/${result.exception.id}`;
+      }
       await loadLists();
-      if (selectedFromHash() === change.id) await loadDetail(change.id);
+      if (change.action !== 'create' && change.id && selectedFromHash() === change.id) await loadDetail(change.id);
+      if (user === activeUser.current) setNotice(change.action === 'create' ? 'Exception created.' : change.action === 'assign' ? 'Assignment saved.' : 'Exception resolved.');
     } catch (failure) {
-      if (!committed && failure instanceof ApiError && (failure.status === 0 || failure.status >= 500)) {
+      if (user !== activeUser.current) return;
+      if (!change) {
+        pendingRef.current = null; setPending(null);
+        setError('The change could not be prepared. Nothing was sent. Try again.');
+      } else if (!committed && failure instanceof ApiError && (failure.status === 0 || failure.status >= 500)) {
         setError('The response was interrupted. The change may already be saved. Retry the same change to retrieve its result.');
       } else {
         pendingRef.current = null; setPending(null);
         if (failure instanceof ApiError && failure.code === 'version_conflict') {
           setConflict(true); setError('Someone changed this exception while you were working. Refresh the record and review the latest version.');
+        } else if (failure instanceof ApiError && failure.code === 'reference_conflict') {
+          setError('That reference is already used in your organization. Change the reference and submit the corrected exception.');
         } else if (committed) {
           setError('Your change was saved, but the refreshed record could not be loaded. Refresh the workspace to see it.');
         } else { await handleError(failure); }
@@ -240,15 +292,34 @@ function App() {
   function assign(event: React.FormEvent) {
     event.preventDefault();
     if (!detail || selectedFromHash() !== detail.exception.id || pendingRef.current || conflict) return;
-    void sendChange({ id: detail.exception.id, action: 'assign', key: crypto.randomUUID(),
+    void sendChange({ id: detail.exception.id, action: 'assign',
       body: { expected_version: detail.exception.version, assignee_id: assignment || null } });
   }
 
   function resolve(event: React.FormEvent) {
     event.preventDefault();
     if (!detail || selectedFromHash() !== detail.exception.id || pendingRef.current || conflict || !resolution.trim()) return;
-    void sendChange({ id: detail.exception.id, action: 'resolve', key: crypto.randomUUID(),
+    void sendChange({ id: detail.exception.id, action: 'resolve',
       body: { expected_version: detail.exception.version, resolution: resolution.trim() } });
+  }
+
+  function startCreate() {
+    if (busy || pendingRef.current) return;
+    setCreateFields({ ...emptyCreateFields }); setError(''); setNotice('');
+    setCreating(true); setSelectedId(null);
+    window.location.hash = 'new';
+  }
+
+  function createException(event: React.FormEvent) {
+    event.preventDefault();
+    if (window.location.hash !== '#new' || busy || pendingRef.current) return;
+    const body = { reference: createFields.reference.trim(), summary: createFields.summary.trim(),
+      details: createFields.details.trim(), priority: createFields.priority };
+    if (!body.reference || !body.summary || !body.details) {
+      setError('Enter a reference, summary, and details before creating the exception.');
+      return;
+    }
+    void sendChange({ action: 'create', body });
   }
 
   const visible = items.filter(item => filter === 'all' || item.status === filter);
@@ -276,8 +347,8 @@ function App() {
         </form>}
         <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Northline: alex@northline.example</span><span>Harbor: jules@harbor.example</span><p>Each organization sees its own records.</p></div>
       </section>
-    </main> : <main className={`workspace ${selectedId ? 'has-selection' : ''}`}>
-      <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button></section>
+    </main> : <main className={`workspace ${selectedId || creating ? 'has-selection' : ''}`}>
+      <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><div className="workspace-controls"><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button><button className="button primary" disabled={busy || !!pending || creating} onClick={startCreate}>New exception</button></div></section>
       <div className="workspace-messages">
         {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
@@ -290,15 +361,26 @@ function App() {
         </section>
 
         <section className="detail-panel" aria-label="Exception detail">
-          {selectedId && <button className="mobile-back button subtle" onClick={() => { window.location.hash = ''; }} disabled={busy || !!pending}>Back to exceptions</button>}
-          {!selectedId ? <div className="empty-detail"><div className="empty-icon" aria-hidden="true">[ ]</div><h2>Choose an exception</h2><p>Open a record to review the details, assign ownership, or document a resolution.</p></div> : detailLoading ? <p className="panel-empty" role="status">Loading record...</p> : !current ? <div className="panel-empty"><h2>Record unavailable</h2><p>Return to the queue or refresh to try again.</p></div> : <>
+          {selectedId && !creating && <button className="mobile-back button subtle" onClick={() => { window.location.hash = ''; }} disabled={busy || !!pending}>Back to exceptions</button>}
+          {creating ? <section className="intake" aria-labelledby="intake-title">
+            <p className="eyebrow">Manual intake</p><h2 id="intake-title">New shipment exception</h2>
+            <p className="muted">Record an exception for {session.user?.organization_name}. It starts open and unassigned.</p>
+            <form onSubmit={createException} aria-label="New exception">
+              <label htmlFor="new-reference">Shipment reference</label><input id="new-reference" value={createFields.reference} onChange={event => setCreateFields({ ...createFields, reference: event.target.value })} maxLength={80} autoComplete="off" required disabled={locked} aria-describedby="reference-help" />
+              <p id="reference-help" className="field-help">References are case-sensitive and must be unique within your organization.</p>
+              <label htmlFor="new-summary">Summary</label><input id="new-summary" value={createFields.summary} onChange={event => setCreateFields({ ...createFields, summary: event.target.value })} maxLength={200} required disabled={locked} />
+              <label htmlFor="new-details">Exception details</label><textarea id="new-details" rows={6} value={createFields.details} onChange={event => setCreateFields({ ...createFields, details: event.target.value })} maxLength={4000} required disabled={locked} /><span className="character-count">{createFields.details.length} / 4000</span>
+              <label htmlFor="new-priority">Priority</label><select id="new-priority" value={createFields.priority} onChange={event => setCreateFields({ ...createFields, priority: event.target.value as CreateFields['priority'] })} disabled={locked}><option value="normal">Normal</option><option value="high">High</option></select>
+              <div className="intake-actions"><button className="button primary" type="submit" disabled={locked || !createFields.reference.trim() || !createFields.summary.trim() || !createFields.details.trim()}>Create exception</button><button className="button secondary" type="button" onClick={() => { window.location.hash = ''; }} disabled={busy || !!pending}>Cancel intake</button></div>
+            </form>
+          </section> : !selectedId ? <div className="empty-detail"><div className="empty-icon" aria-hidden="true">[ ]</div><h2>Choose an exception</h2><p>Open a record to review the details, assign ownership, or document a resolution.</p></div> : detailLoading ? <p className="panel-empty" role="status">Loading record...</p> : !current ? <div className="panel-empty"><h2>Record unavailable</h2><p>Return to the queue or refresh to try again.</p></div> : <>
             <div className="detail-heading"><div><p className="reference">{current.reference}</p><h2>{current.summary}</h2></div><Status item={current} /></div>
             <div className="record-meta"><span>Version {current.version}</span><span>Updated {dateLabel(current.updated_at)}</span><span className={`priority priority-${current.priority}`}>{current.priority === 'high' ? 'High priority' : 'Normal priority'}</span></div>
             <div className="detail-description"><h3>What needs attention</h3><p>{current.details}</p></div>
             <div className="action-grid"><section className="action-card" aria-labelledby="assignment-title"><p className="eyebrow">Ownership</p><h3 id="assignment-title">Assign a teammate</h3><p className="muted">Current owner: <strong>{current.assignee_name ?? 'Unassigned'}</strong></p><form onSubmit={assign}><label htmlFor="assignee">Assigned to</label><select id="assignee" value={assignment} onChange={event => setAssignment(event.target.value)} disabled={locked || current.status === 'resolved'}><option value="">Unassigned</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select><button className="button secondary" type="submit" disabled={locked || current.status === 'resolved' || assignment === (current.assignee_id ?? '')}>Save assignment</button></form></section>
               <section className="action-card" aria-labelledby="resolution-title"><p className="eyebrow">Outcome</p><h3 id="resolution-title">{current.status === 'resolved' ? 'Resolution recorded' : 'Resolve exception'}</h3>{current.status === 'resolved' ? <><p className="resolution-text">{current.resolution}</p><p className="muted small-print">This record is resolved. Its history remains available below.</p></> : <form onSubmit={resolve}><label htmlFor="resolution">Resolution note</label><textarea id="resolution" rows={4} placeholder="Describe what changed and the next handoff." value={resolution} onChange={event => setResolution(event.target.value)} maxLength={2000} required disabled={locked} /><span className="character-count">{resolution.length} / 2000</span><button className="button primary" type="submit" disabled={locked || !resolution.trim()}>Confirm resolution</button></form>}</section>
             </div>
-            <section className="history" aria-labelledby="history-title"><div className="history-heading"><h3 id="history-title">Change history</h3><span>{events.length} saved {events.length === 1 ? 'change' : 'changes'}</span></div>{events.length === 0 ? <p className="muted">No changes recorded yet. The seeded record starts at version {current.version}.</p> : <ol className="history-list">{events.map(event => <li key={event.id}><span className="history-dot" aria-hidden="true" /><div><p><strong>{event.actor_name}</strong> {event.action === 'resolved' ? 'resolved the exception' : event.assignee_name ? `assigned ${event.assignee_name}` : 'removed the assignment'}</p>{event.note && <p className="history-note">{event.note}</p>}<p className="history-meta">Version {event.version} / {dateLabel(event.created_at)}</p></div></li>)}</ol>}</section>
+            <section className="history" aria-labelledby="history-title"><div className="history-heading"><h3 id="history-title">Change history</h3><span>{events.length} saved {events.length === 1 ? 'change' : 'changes'}</span></div>{events.length === 0 ? <p className="muted">No changes recorded yet. The seeded record starts at version {current.version}.</p> : <ol className="history-list">{events.map(event => <li key={event.id}><span className="history-dot" aria-hidden="true" /><div><p><strong>{event.actor_name}</strong> {event.action === 'created' ? 'created the exception' : event.action === 'resolved' ? 'resolved the exception' : event.assignee_name ? `assigned ${event.assignee_name}` : 'removed the assignment'}</p>{event.note && <p className="history-note">{event.note}</p>}<p className="history-meta">Version {event.version} / {dateLabel(event.created_at)}</p></div></li>)}</ol>}</section>
           </>}
         </section>
       </div>

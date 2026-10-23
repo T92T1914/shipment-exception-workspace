@@ -8,6 +8,7 @@ from argon2 import PasswordHasher
 from psycopg.rows import dict_row
 
 PASSWORDS = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
+SCHEMA_VERSION = 2
 
 
 def connect(database_url):
@@ -20,15 +21,43 @@ def initialize(database_url):
         exists = conn.execute("SELECT to_regclass('public.schema_version') AS name").fetchone()["name"]
         if exists:
             version = conn.execute("SELECT version FROM schema_version").fetchall()
-            if version != [{"version": 1}]:
-                raise RuntimeError("Unsupported database schema")
+            if version != [{"version": SCHEMA_VERSION}]:
+                raise RuntimeError("Database schema is not version 2. Stop the app and run shipment-workspace migrate for version 1.")
+        elif conn.execute("""SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                             WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') LIMIT 1""").fetchone():
+            raise RuntimeError("Schema metadata is missing from a nonempty database. Restore its metadata or use an empty dedicated database.")
         conn.execute(files("shipment_workspace").joinpath("schema.sql").read_text(encoding="utf-8"))
+
+
+def require_current_schema(database_url):
+    with connect(database_url) as conn:
+        exists = conn.execute("SELECT to_regclass('public.schema_version') AS name").fetchone()["name"]
+        if not exists or conn.execute("SELECT version FROM schema_version").fetchall() != [{"version": SCHEMA_VERSION}]:
+            raise RuntimeError("Database requires schema version 2. Run init for an empty database or stop the app and migrate version 1.")
+
+
+def migrate(database_url):
+    """Upgrade the known v1 schema atomically. Never backfill fictional history."""
+    with connect(database_url) as conn, conn.transaction():
+        exists = conn.execute("SELECT to_regclass('public.schema_version') AS name").fetchone()["name"]
+        if not exists:
+            raise RuntimeError("No database schema found. Run shipment-workspace init for an empty database.")
+        # Acquire the DDL lock before any row lock. Two migrators otherwise
+        # could each hold a table lock while one waits to upgrade it for ALTER.
+        conn.execute("LOCK TABLE schema_version IN ACCESS EXCLUSIVE MODE")
+        versions = conn.execute("SELECT version FROM schema_version FOR UPDATE").fetchall()
+        if versions == [{"version": SCHEMA_VERSION}]:
+            return
+        if versions != [{"version": 1}]:
+            raise RuntimeError("Unsupported database schema. Only version 1 can be migrated to version 2.")
+        conn.execute(files("shipment_workspace").joinpath("migrate_v1_v2.sql").read_text(encoding="utf-8"))
 
 
 def seed(database_url, password):
     """Insert synthetic records once. Repeated seeding never resets workflow state."""
     if len(password) < 12:
         raise ValueError("Demo password must contain at least 12 characters")
+    require_current_schema(database_url)
     hashed = PASSWORDS.hash(password)
     north, harbor = UUID(int=1), UUID(int=2)
     with connect(database_url) as conn, conn.transaction():

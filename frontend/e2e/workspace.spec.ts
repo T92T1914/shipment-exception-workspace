@@ -57,7 +57,13 @@ async function login(page: Page, organization: 'northline' | 'harbor' = 'northli
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Shipment exceptions', exact: true })).toBeVisible();
   await expect(page.locator('.identity')).toContainText(organization === 'northline' ? 'Northline Logistics' : 'Harbor Supply');
-  await expect(page.locator('.exception-row')).toHaveCount(organization === 'northline' ? 3 : 2);
+  const seededReferences = organization === 'northline' ? ['NL-1042', 'NL-1086', 'NL-1091'] : ['HS-2057', 'HS-2073'];
+  for (const reference of seededReferences) {
+    await expect(page.getByRole('button', { name: new RegExp(reference) })).toBeVisible();
+  }
+  const references = await page.locator('.exception-row .reference').allTextContents();
+  expect(references.length).toBeGreaterThanOrEqual(seededReferences.length);
+  expect(references.every(reference => reference.startsWith(organization === 'northline' ? 'NL-' : 'HS-'))).toBe(true);
 }
 
 async function openRecord(page: Page, reference: string) {
@@ -379,3 +385,244 @@ test('an old list refresh cannot invalidate the new selection while its detail r
     await page.unrouteAll({ behavior: 'wait' });
   }
 });
+
+async function fillIntake(page: Page, reference: string, summary: string, details: string, priority: 'normal' | 'high' = 'normal') {
+  await page.getByRole('button', { name: 'New exception', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'New shipment exception', exact: true })).toBeVisible();
+  await page.getByLabel('Shipment reference', { exact: true }).fill(reference);
+  await page.getByLabel('Summary', { exact: true }).fill(summary);
+  await page.getByLabel('Exception details', { exact: true }).fill(details);
+  await page.getByLabel('Priority', { exact: true }).selectOption(priority);
+}
+
+async function expectCreatedRecord(page: Page, reference: string) {
+  const detail = page.getByRole('region', { name: 'Exception detail', exact: true });
+  await expect(detail.locator('.detail-heading .reference')).toHaveText(reference);
+  await expect(detail.locator('.record-meta')).toContainText('Version 1');
+  await expect(detail.locator('.history-list li')).toHaveCount(1);
+  await expect(detail.locator('.history-list')).toContainText('Alex Morgan created the exception');
+  expect(new URL(page.url()).hash).toMatch(/^#exception\/[0-9a-f-]{36}$/i);
+  return detail;
+}
+
+test('desktop manual intake creates, assigns, resolves and reloads an exception with its creation history', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  const reference = 'NL-UI-Desktop';
+  const summary = 'Appointment paperwork needs review';
+  const details = 'The synthetic intake packet is missing the receiving appointment.\nConfirm the appointment before the next handoff.';
+  const requests: { key: string | undefined; body: Record<string, unknown> }[] = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/exceptions') {
+      requests.push({ key: request.headers()['idempotency-key'], body: request.postDataJSON() });
+    }
+  });
+  await fillIntake(page, `  ${reference}  `, `  ${summary}  `, `  ${details}  `, 'high');
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveAttribute('maxlength', '80');
+  await expect(page.getByLabel('Summary', { exact: true })).toHaveAttribute('maxlength', '200');
+  await expect(page.getByLabel('Exception details', { exact: true })).toHaveAttribute('maxlength', '4000');
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  const detail = await expectCreatedRecord(page, reference);
+  await expect(detail.getByRole('heading', { name: summary, exact: true })).toBeVisible();
+  await expect(detail.locator('.detail-description p')).toHaveText(details);
+  await expect(detail.locator('.record-meta')).toContainText('High priority');
+  expect(requests).toHaveLength(1);
+  expect(requests[0].key).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(requests[0].body).toEqual({ reference, summary, details, priority: 'high' });
+  await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+  await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+  await expect(detail.locator('.record-meta')).toContainText('Version 2');
+  const note = 'Receiving confirmed the appointment and the revised synthetic packet is ready for handoff.';
+  await page.getByLabel('Resolution note', { exact: true }).fill(note);
+  await page.getByRole('button', { name: 'Confirm resolution', exact: true }).click();
+  await expect(detail.locator('.record-meta')).toContainText('Version 3');
+  await expect(detail.locator('.history-list li')).toHaveCount(3);
+  await expect(detail.locator('.resolution-text')).toHaveText(note);
+  await assertNoHorizontalOverflow(page);
+  await screenshot(page, 'desktop-intake-resolved.png');
+  await page.reload();
+  await expect(detail.locator('.detail-heading .reference')).toHaveText(reference);
+  await expect(detail.locator('.resolution-text')).toHaveText(note);
+  await expect(detail.locator('.record-meta')).toContainText('Version 3');
+  await expect(detail.locator('.history-list li')).toHaveCount(3);
+  await expect(detail.locator('.history-list')).toContainText('Alex Morgan created the exception');
+  assertBrowser();
+});
+
+test('mobile manual intake can be canceled, reopened, assigned and resolved without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  await fillIntake(page, 'NL-UI-Canceled', 'Unsent draft', 'This synthetic draft will be canceled.');
+  await assertNoHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Cancel intake', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your organization', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /NL-UI-Canceled/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'New exception', exact: true }).click();
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Summary', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Exception details', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Create exception', exact: true })).toBeDisabled();
+  const reference = 'NL-UI-Mobile';
+  await page.getByLabel('Shipment reference', { exact: true }).fill(reference);
+  await page.getByLabel('Summary', { exact: true }).fill('Delivery contact needs confirmation');
+  await page.getByLabel('Exception details', { exact: true }).fill('The synthetic handoff lacks a receiving contact. Confirm the contact before dispatch.');
+  await assertNoHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  const detail = await expectCreatedRecord(page, reference);
+  await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+  await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+  await expect(detail.locator('.record-meta')).toContainText('Version 2');
+  const note = 'The receiving contact is confirmed in the synthetic handoff packet.';
+  await page.getByLabel('Resolution note', { exact: true }).fill(note);
+  await page.getByRole('button', { name: 'Confirm resolution', exact: true }).click();
+  await expect(detail.locator('.resolution-text')).toHaveText(note);
+  await expect(detail.locator('.record-meta')).toContainText('Version 3');
+  await expect(detail.locator('.history-list li')).toHaveCount(3);
+  await assertNoHorizontalOverflow(page);
+  await screenshot(page, 'mobile-intake-resolved.png');
+  await page.getByRole('button', { name: 'Back to exceptions', exact: true }).click();
+  await expect(page.getByRole('button', { name: new RegExp(reference) })).toBeVisible();
+  await openRecord(page, reference);
+  await expect(detail.locator('.resolution-text')).toHaveText(note);
+  assertBrowser();
+});
+
+test('intake preparation failure and reference conflict leave a corrected intent editable with a new key', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page, { expectedStatus: 409 });
+  await login(page);
+  const summary = 'Synthetic duplicate reference review';
+  const details = 'The reference will be corrected after the existing record is identified.';
+  await fillIntake(page, 'NL-1042', summary, details);
+  const attempts: { key: string | undefined; body: Record<string, unknown> }[] = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/exceptions') {
+      attempts.push({ key: request.headers()['idempotency-key'], body: request.postDataJSON() });
+    }
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: () => { throw new Error('Synthetic preparation failure'); } });
+  });
+  try {
+    await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Nothing was sent. Try again.');
+    await expect(page.getByRole('button', { name: 'Create exception', exact: true })).toBeEnabled();
+    await expect(page.getByLabel('Shipment reference', { exact: true })).toBeEditable();
+    expect(attempts).toHaveLength(0);
+  } finally {
+    await page.evaluate(() => { Reflect.deleteProperty(crypto, 'randomUUID'); });
+  }
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('That reference is already used in your organization');
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveValue('NL-1042');
+  await expect(page.getByLabel('Summary', { exact: true })).toHaveValue(summary);
+  await expect(page.getByLabel('Exception details', { exact: true })).toHaveValue(details);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toBeEditable();
+  await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+  const corrected = 'NL-UI-Corrected';
+  await page.getByLabel('Shipment reference', { exact: true }).fill(corrected);
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  await expectCreatedRecord(page, corrected);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].body.reference).toBe('NL-1042');
+  expect(attempts[1].body.reference).toBe(corrected);
+  expect(attempts[0].key).toBeTruthy();
+  expect(attempts[1].key).not.toBe(attempts[0].key);
+  const listResponse = await page.request.get('/api/exceptions');
+  expect(listResponse.status()).toBe(200);
+  const list = (await listResponse.json()).items;
+  expect(list.filter((item: { reference: string }) => item.reference === 'NL-1042')).toHaveLength(1);
+  expect(list.filter((item: { reference: string }) => item.reference === corrected)).toHaveLength(1);
+  assertBrowser();
+});
+
+async function createAfterUncertainResponse(page: Page, mode: 'abort' | 'json500' | 'malformed201' | 'wrong201') {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page, mode === 'abort'
+    ? { expectedFailedRequest: /^\/api\/exceptions$/ } : mode === 'json500' ? { expectedStatus: 500 } : {});
+  await login(page);
+  const reference = { abort: 'NL-UI-Retry-Dropped', json500: 'NL-UI-Retry-Server',
+    malformed201: 'NL-UI-Retry-Malformed', wrong201: 'NL-UI-Retry-Mismatched' }[mode];
+  await fillIntake(page, reference, 'Synthetic retry acceptance', 'The real server creates this record before its response is interrupted.');
+  const attempts: { key: string | undefined; url: string; body: string | null }[] = [];
+  let created: { id: string; reference: string } | undefined;
+  let committedStatus: number | undefined;
+  await page.route('**/api/exceptions', async route => {
+    const request = route.request();
+    if (request.method() !== 'POST') { await route.continue(); return; }
+    attempts.push({ key: request.headers()['idempotency-key'], url: request.url(), body: request.postData() });
+    if (attempts.length === 1) {
+      const response = await route.fetch();
+      committedStatus = response.status();
+      created = (await response.json()).exception;
+      if (mode === 'abort') {
+        await route.abort('failed');
+      } else if (mode === 'json500') {
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({
+          error: { code: 'gateway_error', message: 'Synthetic response failure after forwarding.' },
+        }) });
+      } else if (mode === 'malformed201') {
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+          exception: { id: created!.id, version: 1 },
+        }) });
+      } else {
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+          exception: { ...created, id: '00000000-0000-4000-8000-00000000f00d',
+            reference: 'NL-UI-Unrelated-Receipt', summary: 'A different synthetic intent' },
+        }) });
+      }
+    } else { await route.continue(); }
+  });
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeVisible();
+  expect(committedStatus).toBe(201);
+  expect(created?.reference).toBe(reference);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Exception details', { exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Create exception', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Cancel intake', exact: true })).toBeDisabled();
+  const beforeResponse = await page.request.get(`/api/exceptions/${created!.id}`);
+  expect(beforeResponse.status()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.exception.version).toBe(1);
+  expect(before.events).toHaveLength(1);
+  expect(before.events[0].action).toBe('created');
+  await page.getByRole('button', { name: 'Retry same change', exact: true }).click();
+  const detail = await expectCreatedRecord(page, reference);
+  expect(new URL(page.url()).hash).toBe(`#exception/${created!.id}`);
+  await expect(detail.locator('.history-list li')).toHaveCount(1);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toBeTruthy();
+  expect(attempts[1]).toEqual(attempts[0]);
+  const listResponse = await page.request.get('/api/exceptions');
+  expect(listResponse.status()).toBe(200);
+  const matching = (await listResponse.json()).items.filter((item: { reference: string }) => item.reference === reference);
+  expect(matching).toHaveLength(1);
+  expect(matching[0].id).toBe(created!.id);
+  const afterResponse = await page.request.get(`/api/exceptions/${created!.id}`);
+  expect(afterResponse.status()).toBe(200);
+  const after = await afterResponse.json();
+  expect(after.exception.version).toBe(1);
+  expect(after.events).toHaveLength(1);
+  expect(after.events[0].action).toBe('created');
+  assertBrowser();
+}
+
+test('intake retries an actually committed creation after its HTTP response is dropped', async ({ page }) => {
+  await createAfterUncertainResponse(page, 'abort');
+});
+
+test('intake retries an actually committed creation after a JSON server error with the same key and body', async ({ page }) => {
+  await createAfterUncertainResponse(page, 'json500');
+});
+
+for (const [mode, label] of [
+  ['malformed201', 'a malformed 201 creation representation'],
+  ['wrong201', 'a 201 representation with an unrelated UUID and body'],
+] as const) {
+  test(`intake preserves the retry intent after ${label}`, async ({ page }) => {
+    await createAfterUncertainResponse(page, mode);
+  });
+}

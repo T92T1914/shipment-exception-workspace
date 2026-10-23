@@ -2,13 +2,14 @@
 
 import hashlib
 from pathlib import Path
+import tarfile
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-wheel = root / "dist" / "shipment_exception_workspace-0.1.0-py3-none-any.whl"
+wheel = root / "dist" / "shipment_exception_workspace-0.2.0-py3-none-any.whl"
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
-    required = ("shipment_workspace/static/index.html", "shipment_workspace/schema.sql",
+    required = ("shipment_workspace/static/index.html", "shipment_workspace/schema.sql", "shipment_workspace/migrate_v1_v2.sql",
                 "shipment_workspace/THIRD_PARTY_NOTICES.txt", "shipment_workspace/app.py")
     for name in required:
         assert name in names, f"Missing wheel member: {name}"
@@ -21,4 +22,8 @@ with zipfile.ZipFile(wheel) as archive:
         assert "node_modules" not in name and not name.endswith((".env", ".log"))
         if name.startswith("shipment_workspace/") and name.endswith((".py", ".sql")):
             assert archive.read(name) == (root / "src" / name).read_bytes(), f"Stale wheel source: {name}"
-print(f"Wheel contents accepted. SHA256 {hashlib.sha256(wheel.read_bytes()).hexdigest()}")
+sdist = root / "dist" / "shipment_exception_workspace-0.2.0.tar.gz"
+with tarfile.open(sdist) as archive:
+    fixture = "shipment_exception_workspace-0.2.0/tests/fixtures/schema_v1.sql"
+    assert archive.extractfile(fixture).read() == (root / "tests/fixtures/schema_v1.sql").read_bytes()
+print(f"Wheel contents and sdist migration fixture accepted. SHA256 {hashlib.sha256(wheel.read_bytes()).hexdigest()}")

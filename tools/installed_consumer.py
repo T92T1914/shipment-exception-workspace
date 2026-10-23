@@ -98,6 +98,12 @@ def main():
             path = f"/api/exceptions/{item['id']}/assign"
             first = client.post(path, json=body, headers=headers)
             assert first.status_code == 200, first.text
+            create_headers = {**headers, "Idempotency-Key": str(uuid4())}
+            create_body = {"reference": "HS-RESTART", "summary": "Restart acceptance",
+                           "details": "Synthetic intake persisted across an API restart.", "priority": "normal"}
+            created = client.post("/api/exceptions", json=create_body, headers=create_headers)
+            assert created.status_code == 201, created.text
+            created_id = created.json()["exception"]["id"]
             # Treat the committed response as lost, then start a fresh app process.
             stop(server)
             server = None
@@ -108,13 +114,20 @@ def main():
             detail = client.get(f"/api/exceptions/{item['id']}").json()
             assert detail["exception"]["version"] == item["version"] + 1
             assert len(detail["events"]) == 1
+            creation_replay = client.post("/api/exceptions", json=create_body, headers=create_headers)
+            assert creation_replay.status_code == 201 and creation_replay.json() == created.json()
+            assert creation_replay.headers["idempotency-replayed"] == "true"
+            creation_detail = client.get(f"/api/exceptions/{created_id}").json()
+            assert creation_detail["exception"]["version"] == 1
+            assert [event["action"] for event in creation_detail["events"]] == ["created"]
         state = {"base_url": base, "port": port, "pid": server.pid, "demo_password": password,
                  "installed_module": probe, "python": python}
         (cwd / "consumer-state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
         (cwd / "result.json").write_text(json.dumps({"passed": True, "installed_module": probe,
              "built_ui_served": True, "dependency_notices_served": True,
              "app_process_restart": True, "persistent_session_and_receipt": True,
-             "one_committed_effect_after_retry": True}, indent=2), encoding="utf-8")
+             "one_committed_effect_after_retry": True, "creation_receipt_after_restart": True,
+             "one_creation_event_after_restart_retry": True}, indent=2), encoding="utf-8")
         print("Installed wheel, built UI, API process restart and durable retry accepted.")
         if args.keep_server:
             server = None
