@@ -89,6 +89,11 @@ by resolving the virtual environment executable's symlink. Preserving the
 absolute venv path corrects that runner error. It was not a wheel import failure
 inside the intended installed environment.
 
+The initial successful hosted run warned that its four pinned actions declared
+Node 20 and were forced onto Node 24 by GitHub. Their official released Node 24
+action revisions now replace those pins. Checkout credentials and automatic
+package-manager caching are disabled because this verification job needs neither.
+
 The initial PostgreSQL helper hung waiting for an inherited subprocess pipe
 after the database started. File-based subprocess capture corrected the helper,
 and the exact owned cluster was stopped. The first installed-consumer readiness
