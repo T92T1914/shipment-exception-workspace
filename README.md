@@ -20,9 +20,10 @@ authorization and transaction boundaries.
 
 ![Manually created synthetic exception with creation, assignment and resolution history](docs/assets/desktop-intake.png)
 
-The [narrow-mobile capture](docs/assets/mobile-intake.png) shows the same intake
-workflow on a 390-pixel-wide viewport. The earlier v0.1.0 captures remain in
-`docs/assets` with their original bytes.
+These intake captures are from v0.2.0. The
+[narrow capture](docs/assets/mobile-intake.png) shows the same workflow at
+390 pixels wide. Later queue and login captures are linked below. The earlier
+v0.1.0 captures remain in `docs/assets` with their original bytes.
 
 ## The workflow
 
