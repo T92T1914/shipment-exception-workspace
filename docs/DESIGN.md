@@ -47,6 +47,78 @@ or constitute PostgreSQL row-level security. PostgreSQL 18's
 [constraint documentation](https://www.postgresql.org/docs/18/ddl-constraints.html)
 describes the composite foreign-key mechanism.
 
+## Bounded live queue
+
+`GET /api/exceptions` accepts `q`, `status`, `limit` and `cursor`. It returns
+`items`, `next_cursor` and `page_size`. The default page size is 20 and the maximum
+is 50. Status is `all`, `open` or `resolved`. Search input is limited to 80
+characters before outer whitespace is removed. Unknown or duplicate parameters,
+invalid types or ranges and NUL characters receive the generic HTTP 422
+`invalid_queue_query` response without echoing submitted values. Cursor payload
+bytes must decode as strict UTF-8. Search values arrive after the framework's URL
+decoding, which can replace malformed percent-encoded bytes. This handler does
+not promise strict validation of the raw URL encoding.
+
+Search matches a literal substring of the reference or summary. SQL parameters
+keep input separate from SQL syntax. Pattern escaping has a different purpose:
+`!` becomes `!!`, `%` becomes `!%`, and `_` becomes `!_` under `ESCAPE '!'`.
+Backslash is ordinary text. `ILIKE` with `COLLATE "C"` compares ASCII letters
+without case and does not promise Unicode case folding or full-text search.
+Reference identity at creation remains case-sensitive. PostgreSQL 18's
+[pattern-matching documentation](https://www.postgresql.org/docs/18/functions-matching.html)
+describes `ILIKE` and the escape mechanism.
+
+Every page query first takes its organization from the authenticated session.
+It then applies search, status and the position predicate within that scope.
+Rows are ordered by `(reference COLLATE "C", id)`, and the next-page comparison
+uses the same pair and collation. The UUID breaks ties without relying on a
+database's locale-specific default order. Reference and ID cannot be edited by
+the application. The query fetches `limit + 1` rows, returns at most `limit`, and
+uses the extra row only to decide whether to issue a next cursor. It does not
+calculate a global total. PostgreSQL documents both the need for a predictable
+[order with LIMIT](https://www.postgresql.org/docs/18/queries-limit.html) and
+[row comparisons](https://www.postgresql.org/docs/18/functions-comparisons.html).
+
+A cursor is at most 2,048 characters and uses canonical unpadded base64url
+transport for a UTF-8 JSON object. Its flat fields are `v`, `organization_id`,
+`status`, `q`, `limit`, `reference` and `id`. Validation rejects duplicate JSON
+keys, extra fields, invalid types and values, NUL characters and text that cannot
+be encoded as UTF-8. Organization, normalized search, status and page size must
+match the current request. Canonical transport here means the base64url spelling
+is checked by decoding and re-encoding. It is not a JSON signature or a promise
+of canonical JSON serialization.
+
+The cursor is unsigned and readable. It represents a position, not permission,
+secrecy or proof that an anchor record exists. A client can construct another
+valid position. No anchor lookup is necessary because each database query still
+uses the session's organization. This follows the
+[OWASP authorization principle](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+of checking access on every request rather than trusting an object identifier or
+client-carried state.
+
+The UI uses 20-record pages, a submitted search and a status filter. Its page
+number and count describe the current page. Previous navigation retains cursor
+positions in page memory and fetches that page again. Refresh, assignment and
+resolution return to the first page under the current criteria. Creation clears
+the criteria, returns to the first page and selects the new UUID. Detail loading
+is independent of queue membership, so an open record remains available outside
+the current page or filters.
+
+Queue requests are associated with their user, query and page. Starting a new
+view invalidates the previous request before the replacement fetch, so a late
+response cannot install an old page. Signing out or changing account clears
+private criteria and page history. This state lives only in the page's memory,
+not localStorage or sessionStorage. The existing uncertain-mutation recovery
+continues to block conflicting navigation while a submitted change is pending.
+
+The queue is a live view at the database's ordinary READ COMMITTED isolation
+level. It does not hold a snapshot across pages. An insertion before the cursor
+needs a refresh to appear, and status changes can alter membership between
+requests. Revisited pages can therefore contain different records. Explicit
+`C` ordering is byte-oriented rather than a natural-language sort. Bounded output
+does not bound database scanning, sorting or latency. This release adds no index
+and claims no measured speed, query-plan improvement or production capacity.
+
 ## Durable login admission
 
 `POST /api/login` reserves permission to perform a password verification before
@@ -213,7 +285,9 @@ boundaries, not a claim of complete application security.
 
 The database contains organizations, users, sessions, exceptions, audit events,
 mutation receipts and login-admission counters. Initialization creates schema
-version 3 in a dedicated database. The application and seeder require that
+version 3 in a dedicated database. Version 0.4.0 keeps that schema and adds no
+queue migration or index. An existing v0.3.0 database needs no upgrade. The
+application and seeder require that
 version. They do not silently
 migrate an existing schema. Seeding inserts synthetic records without resetting
 existing passwords or work and does not fabricate creation events.

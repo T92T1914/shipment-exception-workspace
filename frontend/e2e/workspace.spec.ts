@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -269,7 +269,7 @@ test('a late refresh response cannot replace the record selected by browser navi
   releaseResponse();
   // This notice appears after the held refresh completes, so the assertions below
   // observe the late result rather than winning a race against its delivery.
-  await expect(page.getByRole('status')).toContainText('Showing the latest saved record');
+  await expect(page.locator('.workspace-messages').getByRole('status')).toContainText('Showing the first queue page and the latest saved record');
   await expect(detail.locator('.detail-heading .reference')).toHaveText('NL-1042');
   await expect(detail.locator('.record-meta')).toContainText('Version 3');
   await expect(page.getByLabel('Assigned to', { exact: true })).toBeDisabled();
@@ -349,7 +349,8 @@ test('an old list refresh cannot invalidate the new selection while its detail r
   let reportDetailHeld!: () => void;
   const detailHeld = new Promise<void>(resolve => { reportDetailHeld = resolve; });
 
-  await page.route('**/api/exceptions', async route => {
+  await page.route(url => url.pathname === '/api/exceptions', async route => {
+    if (route.request().method() !== 'GET') { await route.continue(); return; }
     const actual = await route.fetch();
     reportListHeld();
     await listGate;
@@ -370,7 +371,7 @@ test('an old list refresh cannot invalidate the new selection while its detail r
     // The old refresh resumes while the new record's real detail response is
     // still held. Its stale continuation must not invalidate that newer request.
     releaseList();
-    await expect(page.locator('.workspace-messages').getByRole('status')).toContainText('Showing the latest saved record');
+    await expect(page.locator('.workspace-messages').getByRole('status')).toContainText('Showing the first queue page and the latest saved record');
     releaseNextDetail();
     await expect(detail.locator('.detail-heading .reference')).toHaveText('NL-1042');
     await expect(detail.locator('.record-meta')).toContainText('Version 3');
@@ -550,7 +551,7 @@ async function createAfterUncertainResponse(page: Page, mode: 'abort' | 'json500
   const attempts: { key: string | undefined; url: string; body: string | null }[] = [];
   let created: { id: string; reference: string } | undefined;
   let committedStatus: number | undefined;
-  await page.route('**/api/exceptions', async route => {
+  await page.route(url => url.pathname === '/api/exceptions', async route => {
     const request = route.request();
     if (request.method() !== 'POST') { await route.continue(); return; }
     attempts.push({ key: request.headers()['idempotency-key'], url: request.url(), body: request.postData() });
@@ -784,5 +785,290 @@ test('a malformed Retry-After response fixture allows honest manual recovery wit
     assertBrowser();
   } finally {
     loginAdmissionFixture('expire');
+  }
+});
+
+function queueFixture() {
+  const python = process.env.WORKSPACE_FIXTURE_PYTHON;
+  if (!python || !process.env.WORKSPACE_QUEUE_FIXTURE_URL) {
+    throw new Error('The scoped queue fixture environment must be set explicitly.');
+  }
+  const result = spawnSync(python, ['../tools/browser_queue_fixture.py'], {
+    cwd: process.cwd(), env: process.env, encoding: 'utf8', windowsHide: true,
+    timeout: 10_000, maxBuffer: 64 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Queue fixture failed (exit ${result.status ?? 'unavailable'}).`);
+  }
+  let acknowledgement;
+  try { acknowledgement = JSON.parse(result.stdout.trim()); }
+  catch { throw new Error('Queue fixture did not return a valid acknowledgement.'); }
+  if (acknowledgement?.command !== 'seed' || acknowledgement?.ok !== true ||
+      acknowledgement?.northline !== 54 || acknowledgement?.harbor !== 4) {
+    throw new Error('Queue fixture did not confirm the expected synthetic records.');
+  }
+}
+
+async function expectQueuePage(page: Page, number: number, count?: number) {
+  const queue = page.locator('.queue-panel');
+  await expect(queue.locator('.panel-heading p')).toContainText(`on this page / Page ${number}`);
+  await expect(queue.locator('.queue-error')).toHaveCount(0);
+  if (count !== undefined) await expect(queue.locator('.exception-row')).toHaveCount(count);
+  return queue;
+}
+
+async function submitQueueSearch(page: Page, q: string) {
+  await page.getByLabel('Search references and summaries', { exact: true }).fill(q);
+  await page.getByRole('button', { name: 'Search queue', exact: true }).click();
+}
+
+async function searchQueue(page: Page, q: string, count?: number) {
+  await submitQueueSearch(page, q);
+  const queue = await expectQueuePage(page, 1, count);
+  if (q.trim()) await expect(queue.locator('.queue-query')).toContainText(q.trim());
+  return queue;
+}
+
+async function queueReferences(page: Page) {
+  return page.locator('.queue-panel .exception-row .reference').allTextContents();
+}
+
+async function settleDeliveredQueueResponse(page: Page, response: Response) {
+  expect(await response.finished(), 'The held queue response completed delivery').toBeNull();
+  // Observe the delivered response and subsequent rendering, rather than
+  // asserting the new page before the deliberately late response arrives.
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+
+test('desktop queue traverses all unchanged fixture rows before filtering and resolving an off-page selection', async ({ page }) => {
+  queueFixture();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  const queue = await searchQueue(page, 'Queue browse', 20);
+  await expect(page.getByRole('button', { name: 'Previous page', exact: true })).toBeDisabled();
+  const references = await queueReferences(page);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 2, 20);
+  references.push(...await queueReferences(page));
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 3, 14);
+  references.push(...await queueReferences(page));
+  expect(references).toEqual(Array.from({ length: 54 }, (_, index) => `NL-Q-${index.toString().padStart(3, '0')}`));
+  expect(new Set(references).size).toBe(54);
+  expect(references.some(reference => reference.startsWith('HS-'))).toBe(false);
+  await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Previous page', exact: true }).click();
+  await expectQueuePage(page, 2, 20);
+  expect(await queueReferences(page)).toEqual(references.slice(20, 40));
+  await assertNoHorizontalOverflow(page);
+  await screenshot(page, 'desktop-queue-page-two.png');
+
+  await page.getByLabel('Show exceptions', { exact: true }).selectOption('resolved');
+  await expectQueuePage(page, 1, 18);
+  await expect(queue.locator('.exception-row .status')).toHaveText(Array(18).fill('Resolved'));
+  await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+  await page.getByLabel('Show exceptions', { exact: true }).selectOption('open');
+  await expectQueuePage(page, 1, 20);
+  await expect(queue.locator('.exception-row .status')).toHaveText(Array(20).fill('Open'));
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 2, 16);
+  const detail = await openRecord(page, 'NL-Q-053');
+  await expect(detail.locator('.record-meta')).toContainText('Version 1');
+  await page.getByLabel('Resolution note', { exact: true }).fill('Synthetic queue browsing acceptance completed the handoff.');
+  await page.getByRole('button', { name: 'Confirm resolution', exact: true }).click();
+  await expect(detail.locator('.record-meta')).toContainText('Version 2');
+  await expectQueuePage(page, 1, 20);
+  await expect(page.getByLabel('Show exceptions', { exact: true })).toHaveValue('open');
+  await expect(page.getByLabel('Search references and summaries', { exact: true })).toHaveValue('Queue browse');
+  await expect(queue.getByRole('button', { name: /NL-Q-053/ })).toHaveCount(0);
+  await expect(detail.locator('.queue-selection-note')).toBeVisible();
+  await expect(detail.locator('.resolution-text')).toContainText('Synthetic queue browsing acceptance');
+  await expect(detail.locator('.history-list li')).toHaveCount(1);
+  assertBrowser();
+});
+
+test('narrow queue keeps literal search, empty recovery, live paging and off-page details usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  const queue = await searchQueue(page, '%_!', 1);
+  expect(await queueReferences(page)).toEqual(['NL-Q-052']);
+  await expect(queue.locator('.exception-row > strong')).toHaveText('Queue browse 100%_! literal marker');
+  await assertNoHorizontalOverflow(page);
+  await screenshot(page, 'mobile-queue-literal.png');
+  await page.getByLabel('Show exceptions', { exact: true }).selectOption('resolved');
+  await expectQueuePage(page, 1, 0);
+  await searchQueue(page, 'No-such-synthetic-queue-entry', 0);
+  await expect(queue.getByText('No exceptions match this search and status on this page.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+  await expectQueuePage(page, 1, 20);
+  await expect(page.getByLabel('Search references and summaries', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Show exceptions', { exact: true })).toHaveValue('resolved');
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 2);
+  const reference = (await queueReferences(page))[0];
+  expect(reference).toBeTruthy();
+  await expect(queue.locator('.exception-row .status')).toHaveText(Array((await queueReferences(page)).length).fill('Resolved'));
+  const detail = await openRecord(page, reference);
+  await expect(queue).not.toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+  await expectQueuePage(page, 1, 20);
+  await expect(detail.locator('.detail-heading .reference')).toHaveText(reference);
+  await expect(detail.locator('.queue-selection-note')).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Back to exceptions', exact: true }).click();
+  await expect(queue).toBeVisible();
+  await searchQueue(page, '<script>', 1);
+  await expect(queue.locator('.exception-row > strong')).toHaveText('Queue browse <script>literal markup</script>');
+  await expect(queue.locator('.exception-row script')).toHaveCount(0);
+  await assertNoHorizontalOverflow(page);
+  assertBrowser();
+});
+
+test('late queue query success and a substituted page error cannot replace a newer search', async ({ page }) => {
+  test.info().annotations.push({ type: 'response-fixture', description: 'Actual PostgreSQL GET responses are held. One successful older page is replaced with a browser-facing 500 after a newer query has completed.' });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page, { expectedStatus: 500 });
+  await login(page);
+  let releaseQuery = () => {};
+  let releasePage = () => {};
+  const queryRoute = (url: URL) => url.pathname === '/api/exceptions' && url.searchParams.get('q') === 'Queue browse' && !url.searchParams.has('cursor');
+  const pageRoute = (url: URL) => url.pathname === '/api/exceptions' && url.searchParams.get('q') === 'Queue browse' && url.searchParams.has('cursor');
+  try {
+    let queryHeld!: () => void;
+    const heldQuery = new Promise<void>(resolve => { queryHeld = resolve; });
+    const queryGate = new Promise<void>(resolve => { releaseQuery = resolve; });
+    let oldQueryReference: string | undefined;
+    await page.route(queryRoute, async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      oldQueryReference = (await actual.json()).items[0].reference;
+      queryHeld();
+      await queryGate;
+      await route.fulfill({ response: actual });
+    });
+    await submitQueueSearch(page, 'Queue browse');
+    await heldQuery;
+    expect(oldQueryReference).toBe('NL-Q-000');
+    await searchQueue(page, '%_!', 1);
+    expect(await queueReferences(page)).toEqual(['NL-Q-052']);
+    const deliveredQuery = page.waitForResponse(response => response.request().method() === 'GET' && queryRoute(new URL(response.url())));
+    releaseQuery();
+    await settleDeliveredQueueResponse(page, await deliveredQuery);
+    await expectQueuePage(page, 1, 1);
+    expect(await queueReferences(page)).toEqual(['NL-Q-052']);
+    await expect(page.locator('.queue-query')).toContainText('%_!');
+    await page.unroute(queryRoute);
+
+    await searchQueue(page, 'Queue browse', 20);
+    let pageHeld!: () => void;
+    const heldPage = new Promise<void>(resolve => { pageHeld = resolve; });
+    const pageGate = new Promise<void>(resolve => { releasePage = resolve; });
+    let actualPageReference: string | undefined;
+    await page.route(pageRoute, async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      actualPageReference = (await actual.json()).items[0].reference;
+      pageHeld();
+      await pageGate;
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'synthetic_page_error', message: 'Controlled old-page response failure.' } }) });
+    });
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    await heldPage;
+    expect(actualPageReference).toBe('NL-Q-020');
+    await searchQueue(page, 'No-current-queue-match', 0);
+    const deliveredError = page.waitForResponse(response => response.request().method() === 'GET' && pageRoute(new URL(response.url())) && response.status() === 500);
+    releasePage();
+    await settleDeliveredQueueResponse(page, await deliveredError);
+    await expectQueuePage(page, 1, 0);
+    await expect(page.locator('.queue-query')).toContainText('No-current-queue-match');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    assertBrowser();
+  } finally {
+    releaseQuery(); releasePage();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
+test('later-page creation resets browsing, survives its off-page bookmark and clears private queue state on organization switch', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  await searchQueue(page, 'Queue browse', 20);
+  await page.getByLabel('Show exceptions', { exact: true }).selectOption('open');
+  await expectQueuePage(page, 1, 20);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 2, 15);
+  await fillIntake(page, 'NL-ZQ-Created', 'Created during bounded browsing', 'Synthetic intake from a later queue page.');
+  await page.getByRole('button', { name: 'Create exception', exact: true }).click();
+  const detail = await expectCreatedRecord(page, 'NL-ZQ-Created');
+  const createdHash = new URL(page.url()).hash;
+  await expectQueuePage(page, 1, 20);
+  await expect(page.getByLabel('Search references and summaries', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Show exceptions', { exact: true })).toHaveValue('all');
+  await expect(page.locator('.queue-query')).toHaveCount(0);
+  await expect(page.locator('.queue-panel').getByRole('button', { name: /NL-ZQ-Created/ })).toHaveCount(0);
+  await expect(detail.locator('.queue-selection-note')).toBeVisible();
+  await page.reload();
+  await expect(detail.locator('.detail-heading .reference')).toHaveText('NL-ZQ-Created');
+  expect(new URL(page.url()).hash).toBe(createdHash);
+  await expectQueuePage(page, 1, 20);
+  await expect(detail.locator('.queue-selection-note')).toBeVisible();
+
+  await page.evaluate(() => { window.location.hash = ''; });
+  await searchQueue(page, 'Queue browse', 20);
+  await page.getByRole('button', { name: 'Next page', exact: true }).click();
+  await expectQueuePage(page, 2, 20);
+  let releaseOld = () => {};
+  let reportHeld!: () => void;
+  const held = new Promise<void>(resolve => { reportHeld = resolve; });
+  const gate = new Promise<void>(resolve => { releaseOld = resolve; });
+  const oldRoute = (url: URL) => url.pathname === '/api/exceptions' && url.searchParams.get('q') === 'Queue browse' && !url.searchParams.has('cursor');
+  await page.route(oldRoute, async route => {
+    const actual = await route.fetch();
+    expect(actual.status()).toBe(200);
+    expect((await actual.json()).items[0].reference).toBe('NL-Q-000');
+    reportHeld();
+    await gate;
+    await route.fulfill({ response: actual });
+  });
+  try {
+    await submitQueueSearch(page, 'Queue browse');
+    await held;
+    await page.getByLabel('Search references and summaries', { exact: true }).fill('Unsent Northline draft');
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    // Stay in the same document so the held Northline response can actually
+    // arrive after Harbor takes ownership of the page.
+    await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+    await page.getByLabel('Email address', { exact: true }).fill('jules@harbor.example');
+    await page.getByLabel('Password', { exact: true }).fill(demoPassword!);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.locator('.identity')).toContainText('Harbor Supply');
+    await expectQueuePage(page, 1, 7);
+    await expect(page.getByLabel('Search references and summaries', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('Show exceptions', { exact: true })).toHaveValue('all');
+    await expect(page.getByRole('button', { name: 'Previous page', exact: true })).toBeDisabled();
+    await expect(page.locator('.queue-query')).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe('');
+    const deliveredOld = page.waitForResponse(response => response.request().method() === 'GET' && oldRoute(new URL(response.url())));
+    releaseOld();
+    await settleDeliveredQueueResponse(page, await deliveredOld);
+    await expectQueuePage(page, 1, 7);
+    expect((await queueReferences(page)).every(reference => reference.startsWith('HS-'))).toBe(true);
+    await expect(page.locator('.queue-panel').getByRole('button', { name: /NL-/ })).toHaveCount(0);
+    await page.unroute(oldRoute);
+    await searchQueue(page, 'Queue browse', 4);
+    expect(await queueReferences(page)).toEqual(['HS-Q-000', 'HS-Q-001', 'HS-Q-002', 'HS-Q-003']);
+    await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeDisabled();
+    await assertNoHorizontalOverflow(page);
+    assertBrowser();
+  } finally {
+    releaseOld();
+    await page.unrouteAll({ behavior: 'wait' });
   }
 });

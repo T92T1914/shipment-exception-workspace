@@ -75,6 +75,7 @@ jobs:
           eval "$("$RUNNER_TEMP/build-env/bin/python" -c 'import json,os,shlex; s=json.load(open(os.environ["RUNNER_TEMP"]+"/consumer/consumer-state.json")); print("export WORKSPACE_BASE_URL="+shlex.quote(s["base_url"])); print("export WORKSPACE_DEMO_PASSWORD="+shlex.quote(s["demo_password"]))')"
           export WORKSPACE_FIXTURE_PYTHON="$RUNNER_TEMP/consumer-env/bin/python"
           export WORKSPACE_LOGIN_FIXTURE_URL="$SHIPMENT_DATABASE_URL"
+          export WORKSPACE_QUEUE_FIXTURE_URL="$SHIPMENT_DATABASE_URL"
           npm run test:e2e
       - name: Preserve the verified wheel and test summary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

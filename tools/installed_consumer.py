@@ -94,6 +94,10 @@ def main():
                                   headers={"Origin": base, "X-CSRF-Token": csrf})
             assert session.status_code == 200, session.text
             headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"], "Idempotency-Key": str(uuid4())}
+            queue_params = {"q": "HS-", "status": "all", "limit": 1}
+            first_page = client.get("/api/exceptions", params=queue_params).json()
+            assert len(first_page["items"]) == 1 and first_page["page_size"] == 1
+            assert first_page["items"][0]["reference"] == "HS-2057" and first_page["next_cursor"]
             item = next(x for x in client.get("/api/exceptions").json()["items"] if x["reference"] == "HS-2073")
             body = {"expected_version": item["version"], "assignee_id": session.json()["user"]["id"]}
             path = f"/api/exceptions/{item['id']}/assign"
@@ -127,6 +131,12 @@ def main():
             with psycopg.connect(database_url) as conn:
                 after_admission = conn.execute("SELECT attempts,reset_at FROM login_global").fetchall(), conn.execute("SELECT * FROM login_identifiers ORDER BY identifier_hash").fetchall()
             assert after_admission == before_admission
+            second_page = client.get("/api/exceptions", params={**queue_params, "cursor": first_page["next_cursor"]}).json()
+            assert len(second_page["items"]) == 1 and second_page["items"][0]["reference"] == "HS-2073"
+            assert second_page["next_cursor"]
+            third_page = client.get("/api/exceptions", params={**queue_params, "cursor": second_page["next_cursor"]}).json()
+            assert [row["reference"] for row in third_page["items"]] == ["HS-RESTART"]
+            assert third_page["next_cursor"] is None
             replay = client.post(path, json=body, headers=headers)
             assert replay.status_code == 200 and replay.json() == first.json()
             assert replay.headers["idempotency-replayed"] == "true"
@@ -153,8 +163,9 @@ def main():
              "one_committed_effect_after_retry": True, "creation_receipt_after_restart": True,
              "one_creation_event_after_restart_retry": True, "login_budget_survived_restart": True,
              "correct_password_throttled_at_global_limit": True,
-             "admission_fixture_expired_before_browser_campaign": True}, indent=2), encoding="utf-8")
-        print("Installed wheel, built UI, API restart, durable retry and login admission accepted.")
+             "admission_fixture_expired_before_browser_campaign": True,
+             "queue_cursor_survived_restart": True, "bounded_queue_traversal": True}, indent=2), encoding="utf-8")
+        print("Installed wheel, UI, API restart, durable retry, login admission and queue pages accepted.")
         if args.keep_server:
             server = None
     finally:
