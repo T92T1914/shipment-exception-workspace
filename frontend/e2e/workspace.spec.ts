@@ -60,17 +60,33 @@ async function login(page: Page, organization: 'northline' | 'harbor' = 'northli
   await expect(page.locator('.identity')).toContainText(organization === 'northline' ? 'Northline Logistics' : 'Harbor Supply');
   const seededReferences = organization === 'northline' ? ['NL-1042', 'NL-1086', 'NL-1091'] : ['HS-2057', 'HS-2073'];
   for (const reference of seededReferences) {
-    await expect(page.getByRole('button', { name: new RegExp(reference) })).toBeVisible();
+    const row = page.getByRole('button', { name: new RegExp(reference) });
+    await expect(row).toBeVisible();
+    await expect(row.locator('.reference')).toHaveText(reference);
+    await expect(row.locator('.reference')).toHaveJSProperty('translate', false);
+    await expect(row.locator('strong')).toHaveJSProperty('translate', true);
   }
   const references = await page.locator('.exception-row .reference').allTextContents();
   expect(references.length).toBeGreaterThanOrEqual(seededReferences.length);
   expect(references.every(reference => reference.startsWith(organization === 'northline' ? 'NL-' : 'HS-'))).toBe(true);
+  // These are native translation hints, not a translation provider quality check.
+  for (const control of [
+    page.getByLabel('Search references and summaries', { exact: true }),
+    page.getByRole('button', { name: 'Search queue', exact: true }),
+    page.getByRole('button', { name: 'Clear search', exact: true }),
+    page.getByLabel('Show exceptions', { exact: true }),
+    page.getByRole('button', { name: 'Previous page', exact: true }),
+    page.getByRole('button', { name: 'Next page', exact: true }),
+  ]) await expect(control).toHaveJSProperty('translate', true);
 }
 
 async function openRecord(page: Page, reference: string) {
   await page.getByRole('button', { name: new RegExp(reference) }).click();
   const detail = page.getByRole('region', { name: 'Exception detail', exact: true });
   await expect(detail.locator('.detail-heading .reference')).toHaveText(reference);
+  await expect(detail.locator('.detail-heading .reference')).toHaveJSProperty('translate', false);
+  await expect(detail.locator('.detail-heading h2')).toHaveJSProperty('translate', true);
+  await expect(detail.locator('.detail-description p')).toHaveJSProperty('translate', true);
   return detail;
 }
 
@@ -395,11 +411,23 @@ async function fillIntake(page: Page, reference: string, summary: string, detail
   await page.getByLabel('Summary', { exact: true }).fill(summary);
   await page.getByLabel('Exception details', { exact: true }).fill(details);
   await page.getByLabel('Priority', { exact: true }).selectOption(priority);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveJSProperty('translate', false);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveValue(reference);
+  await expect(page.locator('label[for="new-reference"]')).toHaveJSProperty('translate', true);
+  await expect(page.locator('#reference-help')).toHaveJSProperty('translate', true);
+  await expect(page.locator('#reference-help')).toHaveText('References are case-sensitive and must be unique within your organization.');
+  await expect(page.getByLabel('Summary', { exact: true })).toHaveJSProperty('translate', true);
+  await expect(page.getByLabel('Summary', { exact: true })).toHaveValue(summary);
+  await expect(page.getByLabel('Exception details', { exact: true })).toHaveJSProperty('translate', true);
+  await expect(page.getByLabel('Exception details', { exact: true })).toHaveValue(details);
 }
 
 async function expectCreatedRecord(page: Page, reference: string) {
   const detail = page.getByRole('region', { name: 'Exception detail', exact: true });
   await expect(detail.locator('.detail-heading .reference')).toHaveText(reference);
+  await expect(detail.locator('.detail-heading .reference')).toHaveJSProperty('translate', false);
+  await expect(detail.locator('.detail-heading h2')).toHaveJSProperty('translate', true);
+  await expect(detail.locator('.detail-description p')).toHaveJSProperty('translate', true);
   await expect(detail.locator('.record-meta')).toContainText('Version 1');
   await expect(detail.locator('.history-list li')).toHaveCount(1);
   await expect(detail.locator('.history-list')).toContainText('Alex Morgan created the exception');
@@ -468,6 +496,8 @@ test('mobile manual intake can be canceled, reopened, assigned and resolved with
   await expect(page.getByRole('button', { name: 'Create exception', exact: true })).toBeDisabled();
   const reference = 'NL-UI-Mobile';
   await page.getByLabel('Shipment reference', { exact: true }).fill(reference);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveValue(reference);
+  await expect(page.getByLabel('Shipment reference', { exact: true })).toHaveJSProperty('translate', false);
   await page.getByLabel('Summary', { exact: true }).fill('Delivery contact needs confirmation');
   await page.getByLabel('Exception details', { exact: true }).fill('The synthetic handoff lacks a receiving contact. Confirm the contact before dispatch.');
   await assertNoHorizontalOverflow(page);
