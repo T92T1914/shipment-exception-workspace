@@ -42,6 +42,10 @@ The desktop view shows the queue beside the selected record. Narrow screens
 switch between the queue and detail view. Operators can change the workflow.
 Read-only reviewers can search the queue and inspect records and their history.
 
+The [desktop reviewer](docs/assets/desktop-reviewer.png) and
+[narrow reviewer](docs/assets/narrow-reviewer.png) captures show that view with
+synthetic saved history.
+
 ## Operator and reviewer access
 
 The account's current database role determines what it can do. Sign-in and
