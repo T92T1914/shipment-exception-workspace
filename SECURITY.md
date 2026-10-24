@@ -6,7 +6,8 @@ loopback binding. Do not use real shipment, customer, defense or other sensitive
 data in this release.
 
 The application enforces session authentication, organization-scoped object
-access, CSRF checks, version conflicts and actor-scoped idempotent mutations.
+access, current operator permission for mutations, CSRF checks, version conflicts
+and actor-scoped idempotent mutations.
 Composite database constraints and transactions support those boundaries.
 [Design](docs/DESIGN.md) describes their implementation.
 
@@ -22,6 +23,38 @@ route, multifactor authentication, password recovery or
 tamper-proof audit log. See [limitations](docs/LIMITATIONS.md) and the
 [executed verification record](docs/VERIFICATION.md) before interpreting a
 security claim.
+
+## Operator and reviewer boundaries
+
+Operators and read-only reviewers can inspect their organization's queue,
+details, history and members and can sign out. Only operators can create,
+assign, unassign, resolve or replay a saved mutation response. Any member of the
+same organization remains eligible as an assignee. The role limits the actor's
+permission, not the recipient of an assignment.
+
+The server reads role from the current user row. Headers, body fields and UI
+controls do not grant permission. After normal model, Origin, CSRF and retry-key
+checks, each business transaction locks the actor row with `FOR SHARE` and checks
+its current organization and operator role before receipt reservation/lookup or
+business writes. A valid reviewer attempt receives HTTP 403 `read_only` without
+changing an exception, event or receipt. Foreign and missing mutation targets
+receive the same denial before lookup. Read-only detail requests keep the usual
+organization-scoped 404 behavior.
+
+The lock orders ordinary role updates against the mutation transaction. A
+mutation that already holds it can commit before a waiting role update. A role
+update that commits first is visible to the subsequent locking permission read.
+This is not instantaneous revocation, cancellation of a committed request or
+protection from a privileged database operator. There is no public interface for
+role administration or general policy engine.
+
+The UI reflects the role and refreshes access when the workspace is refreshed.
+An explicit `read_only` write/replay response retires the tab's local pending
+intent and conservatively switches it to read-only access. An earlier
+interrupted attempt may already be saved, so that denial is not proof of an
+earlier failure. Current records remain available for manual inspection, and
+permission refresh performs no automatic mutation retry. Other uncertain
+operator requests preserve their original key and body.
 
 ## Queue queries and positions
 
@@ -118,26 +151,37 @@ Python executable; admission scenarios separately use
 endpoints. The helper changes its target database, and its refusal check does
 not make it safe for a retained accepted consumer or another project's data.
 
+The role browser fixture separately requires `WORKSPACE_ROLE_FIXTURE_URL`. It
+checks schema 4 and the exact six synthetic account IDs, organizations and
+emails, then changes only Alex's role for its demotion/promotion scenarios. It
+does not reset domain records, sessions, history or receipts and supplies no
+HTTP control endpoint. Its guard does not make it safe for a retained accepted
+consumer or another project's data.
+
 The demo seeder requires a password of at least 12 characters. Repeated seeding
-does not change an existing account's password. Use fresh isolated demo state
+does not change an existing account's password or role. Use fresh isolated demo
+state
 when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.4.0 keeps schema version 3. An existing v0.3.0 database needs no new
-queue migration. For schema 1 or 2, stop every application process using the
-dedicated database and take a private backup before running the installed
+Version 0.5.0 requires schema version 4. For schema 1, 2 or 3, stop every
+application process using the dedicated database and take a private backup before
+running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.
-Initialization, seeding and server startup do not silently upgrade schema 1 or 2.
+Initialization, seeding and server startup do not silently upgrade an older schema.
 Do not use seeding as an upgrade or password-reset step.
 
-The bounded migration upgrades schema 1 or 2 to 3 in one transaction, adding
-admission state and applying the earlier audit change when needed. It preserves
-existing domain rows, password hashes, audit events, sessions and retry receipts,
+The bounded migration upgrades schema 1, 2 or 3 to 4 in one transaction, applying
+earlier audit/admission changes when needed and adding roles. Existing users
+retain operator access. Future user inserts without a role default to reviewer.
+It preserves existing domain rows, password hashes, audit events, sessions and retry receipts,
 including old fingerprint bytes, without backfilling fictional creation history.
 Preserved sessions still obey their original expiry and logout behavior. A
-receipt replay still needs a current authenticated session, correct Origin and
-CSRF token. There is no downgrade or qualified backup-restoration route. See the
+receipt replay still needs a current authenticated session, current operator
+permission, correct Origin and CSRF token. Migration does not add the two fresh-demo reviewer
+accounts to an existing database, and seeding is not an upgrade step. There is
+no downgrade or qualified backup-restoration route. See the
 [existing-database instructions](README.md#use-an-existing-database) and check
 the executed evidence before interpreting preservation as a broader recovery
 guarantee. Upgrade acceptance uses disposable legacy fixtures and does not require

@@ -36,8 +36,9 @@ with SameSite used as another layer rather than the only check.
 
 List, detail, member and mutation queries take the organization from the server
 session. An absent exception and another organization's exception both return
-404 from the detail and mutation routes. All members in one organization have
-the same creation, assignment and resolution permissions.
+404 from the detail routes and from an authorized operator's mutation lookup.
+Reviewers receive a uniform `read_only` denial before mutation object lookup,
+including for foreign or missing target UUIDs.
 
 The schema also checks organization membership. Composite foreign keys bind an
 exception's assignee and each event's actor, assignee and exception to the same
@@ -46,6 +47,41 @@ an application check is accidentally omitted. They do not replace query scoping
 or constitute PostgreSQL row-level security. PostgreSQL 18's
 [constraint documentation](https://www.postgresql.org/docs/18/ddl-constraints.html)
 describes the composite foreign-key mechanism.
+
+## Operator and reviewer access
+
+The user row contains exactly one role, `operator` or `reviewer`. The server's
+session query joins the current user row, and login/session payloads expose its
+role to the UI. The role is not trusted from a cookie claim, header, request body
+or visible control. Both roles can read their organization's queue, details,
+history and member list and can sign out. Only operators can create, assign,
+unassign or resolve, including replaying a saved mutation receipt. Any member of
+the same organization remains a valid assignee, regardless of that member's role.
+
+Normal input, Origin, CSRF and retry-key checks still apply. After those checks,
+each mutation starts its business transaction and reads the actor's current
+organization and role with `SELECT ... FOR SHARE`. A missing actor, changed
+organization or role other than operator receives HTTP 403 `read_only` before
+receipt reservation/lookup and before business writes. Denied attempts create
+no receipt or audit event and change no exception version. Previously saved
+receipts remain stored, but their existence grants no replay permission.
+
+The user-row lock is held through the business transaction's commit or rollback.
+An ordinary non-key role `UPDATE` conflicts with `FOR SHARE`; the weaker
+`FOR KEY SHARE` would not provide that boundary. If the mutation obtains its
+lock first, it can finish before the role update. If the role update obtains its
+lock first and commits, the later locking read sees the changed role and denies
+the write. This is a database ordering rule, not instant revocation or cancellation
+of an already committed request. PostgreSQL 18 documents these
+[row-lock conflicts](https://www.postgresql.org/docs/18/explicit-locking.html) and
+[Read Committed locking reads](https://www.postgresql.org/docs/18/transaction-iso.html).
+
+Organization relationships remain mandatory alongside the role. This follows
+the [OWASP authorization guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
+to define least privilege and check permission on every request. It is a small
+application policy, not a general role/attribute policy engine. There is no
+public role-management route, and a privileged database operator remains outside
+the protection claimed by this application.
 
 ## Bounded live queue
 
@@ -186,7 +222,8 @@ separate from authorization and parameterized SQL, following
 [OWASP's input-validation guidance](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html).
 
 Creation requires a UUID `Idempotency-Key`. In one transaction, the server
-reserves that actor's key, inserts the exception, adds its version-one `created`
+locks and checks the actor's current operator access, reserves that actor's key,
+inserts the exception, adds its version-one `created`
 audit event and stores the HTTP 201 response. It exposes that response only after
 commit. An unexpected error rolls back the record, event and receipt together.
 
@@ -212,16 +249,18 @@ The server uses one explicit transaction at PostgreSQL's READ COMMITTED isolatio
 level. The connection is otherwise in autocommit mode, following Psycopg's
 [version 3.3.6 transaction-context API](https://github.com/psycopg/psycopg/blob/3.3.6/docs/basic/transactions.rst):
 
-1. Reserve the key for the authenticated actor and organization. Its fingerprint
+1. Lock the actor row with `FOR SHARE` and require its current operator role and
+   matching organization before touching receipts or exceptions.
+2. Reserve the key for the authenticated actor and organization. Its fingerprint
    covers the action, exception ID and validated request body in canonical JSON.
-2. If that key already exists, read its receipt in a separate SQL statement.
+3. If that key already exists, read its receipt in a separate SQL statement.
    The same fingerprint returns the saved status and response. A different
    fingerprint returns 409 without applying another change.
-3. For a new key, lock the organization-scoped exception row with `FOR UPDATE`.
+4. For a new key, lock the organization-scoped exception row with `FOR UPDATE`.
    A stale expected version returns 409. A resolved record cannot be changed.
-4. Validate the assignee or resolution, update the exception and increment its
+5. Validate the assignee or resolution, update the exception and increment its
    version once. Insert one audit event for that new version.
-5. Save the response in the retry receipt and commit. Only then expose the
+6. Save the response in the retry receipt and commit. Only then expose the
    response to the client.
 
 The separate receipt lookup matters during a race. At READ COMMITTED, a
@@ -244,8 +283,9 @@ errors after reservation are saved as receipts too. An unexpected exception
 rolls back the update, event and reservation together, leaving the same request
 available for a fresh attempt.
 
-Replay still requires a current authenticated session, correct Origin and CSRF
-token. A receipt is not an authentication credential. Its response is historical:
+Replay still requires a current authenticated session, current operator access,
+correct Origin and CSRF token. A receipt is not an authentication or permission
+credential. Its response is historical:
 another accepted change may already have advanced the record, so the UI refreshes
 the detail after success rather than treating the saved response as current state.
 
@@ -262,6 +302,16 @@ The UI retains the key and body of a change while its result is uncertain.
 Network failures, unreadable responses and server errors offer **Retry same
 change**. They do not silently mint a new key. This pending state lives in the
 page's memory, so closing or reloading the page loses that recovery action.
+
+Read-only reviewers see an access notice and reading/navigation controls, with
+no creation or editing forms. **Refresh workspace** also reads current session
+access. There is no automatic role-change push, so an operator tab can become
+stale. If a write or replay receives an explicit 403 `read_only`, the UI retires
+that local pending intent, switches conservatively to read-only access and
+explains that an earlier interrupted request may already be saved. It does not
+turn the denial into proof of an earlier failure. A permission refresh performs
+no automatic POST. Current records can be inspected after an explicit refresh.
+Other uncertain operator outcomes retain their original canonical key and body.
 
 Pending intake keeps its submitted fields and blocks another form submission or
 navigation to a different record. A duplicate reference is a confirmed conflict,
@@ -285,20 +335,21 @@ boundaries, not a claim of complete application security.
 
 The database contains organizations, users, sessions, exceptions, audit events,
 mutation receipts and login-admission counters. Initialization creates schema
-version 3 in a dedicated database. Version 0.4.0 keeps that schema and adds no
-queue migration or index. An existing v0.3.0 database needs no upgrade. The
-application and seeder require that
-version. They do not silently
-migrate an existing schema. Seeding inserts synthetic records without resetting
-existing passwords or work and does not fabricate creation events.
+version 4 in a dedicated database. Version 0.5.0 adds the user role column and
+requires an explicit upgrade for schema 1, 2 or 3. The application and seeder
+require the current schema and do not silently migrate an existing database.
+Fresh seeding inserts two organizations, four operators and two reviewers.
+Seeding preserves existing passwords, roles and work and fabricates no creation
+events. Future user inserts that omit a role default to reviewer.
 
-The explicit `migrate` command upgrades a known version-one or version-two schema
-to version 3 in a single transaction after application processes have stopped.
-It locks the version table, applies the earlier audit change when starting from
-version 1, then creates admission state and changes the version marker. Existing
+The explicit `migrate` command upgrades a known schema 1, 2 or 3 to version 4 in
+a single transaction after application processes have stopped. It locks the
+version table and applies each needed audit, admission and role upgrade in order.
+The role upgrade backfills existing users as operators to preserve accepted
+access, then changes the future-insert default to reviewer. Existing
 domain rows, password hashes, sessions, events and receipts retain their values
 and original receipt fingerprints. Old seeded records do not gain invented
-actors, timestamps or creation history. Repeating migration on schema 3 returns
+actors, timestamps or creation history. Repeating migration on schema 4 returns
 without changing it, and other versions are refused. This is a bounded upgrade,
 with no general migration framework or downgrade route. The operator must make
 a private database backup before invoking it. Acceptance uses disposable legacy

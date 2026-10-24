@@ -189,7 +189,7 @@ def test_search_metacharacters_sql_html_and_unicode_are_literal_data(
     page = read_page(client, {"q": needle})
     assert [item["id"] for item in page["items"]] == [intended]
     with psycopg.connect(database) as conn:
-        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 4
+        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 6
 
 
 def test_c_search_folds_ascii_without_claiming_unicode_case_folding(northline, identities, database):

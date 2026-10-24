@@ -78,10 +78,10 @@ def test_list_members_detail_and_mutations_are_organization_scoped(
     north_members = north.get("/api/members").json()["items"]
     other_members = other.get("/api/members").json()["items"]
     assert {row["email"] for row in north_members} == {
-        "alex@northline.example", "sam@northline.example"
+        "alex@northline.example", "sam@northline.example", "casey@northline.example"
     }
     assert {row["email"] for row in other_members} == {
-        "jules@harbor.example", "robin@harbor.example"
+        "jules@harbor.example", "robin@harbor.example", "taylor@harbor.example"
     }
     for outsider, outsider_headers, item in (
         (north, north_headers, other_items[0]),
@@ -481,7 +481,7 @@ def test_sql_and_html_resolution_strings_are_stored_as_data(northline, open_exce
     assert response.json()["exception"]["resolution"] == literal
     assert detail(client, open_exception["id"])["exception"]["resolution"] == literal
     with psycopg.connect(database) as conn:
-        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 4
+        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 6
 
 
 @pytest.mark.parametrize("statement", [

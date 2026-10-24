@@ -158,7 +158,7 @@ def create_app(settings: Settings):
         if not token or len(token) > 128:
             return None
         digest = hashlib.sha256(token.encode()).hexdigest()
-        return conn.execute("""SELECT s.*, u.organization_id, u.name, u.email, o.name AS organization_name
+        return conn.execute("""SELECT s.*, u.organization_id, u.name, u.email, u.role, o.name AS organization_name
             FROM sessions s LEFT JOIN users u ON u.id=s.user_id
             LEFT JOIN organizations o ON o.id=u.organization_id
             WHERE token_hash=%s AND expires_at > now()""", (digest,)).fetchone()
@@ -180,7 +180,7 @@ def create_app(settings: Settings):
     def payload(current):
         result = {"authenticated": bool(current["user_id"]), "csrf_token": current["csrf_token"]}
         if current["user_id"]:
-            result["user"] = {"id": current["user_id"], **{key: current[key] for key in ("name", "email", "organization_id", "organization_name")}}
+            result["user"] = {"id": current["user_id"], **{key: current[key] for key in ("name", "email", "organization_id", "organization_name", "role")}}
         return jsonable_encoder(result)
 
     def new_session(conn, user_id=None):
@@ -226,7 +226,7 @@ def create_app(settings: Settings):
         with conn.transaction():
             conn.execute("DELETE FROM sessions WHERE token_hash=%s", (current["token_hash"],))
             token, created = new_session(conn, user["id"])
-        created.update({key: user[key] for key in ("name", "email", "organization_id", "organization_name")})
+        created.update({key: user[key] for key in ("name", "email", "organization_id", "organization_name", "role")})
         return session_response(created, token)
 
     @app.post("/api/logout", status_code=204)
@@ -279,6 +279,13 @@ def create_app(settings: Settings):
             raise Problem(409, "idempotency_conflict", "This retry key belongs to a different change.")
         return receipt
 
+    def require_operator(conn, org, actor):
+        # SHARE conflicts with an ordinary non-key role UPDATE. Keep this lock
+        # until the business transaction commits, before receipt/record locks.
+        user = conn.execute("SELECT organization_id,role FROM users WHERE id=%s FOR SHARE", (actor,)).fetchone()
+        if not user or user["organization_id"] != org or user["role"] != "operator":
+            raise Problem(403, "read_only", "Your account has read-only access. Refresh the workspace to review saved records.")
+
     def save_receipt(conn, org, actor, request_key, status, result):
         conn.execute("UPDATE mutation_requests SET status_code=%s,response=%s WHERE organization_id=%s AND actor_id=%s AND key=%s",
                      (status, Jsonb(result), org, actor, request_key))
@@ -291,6 +298,7 @@ def create_app(settings: Settings):
         org, actor = current["organization_id"], current["user_id"]
         replay = False
         with conn.transaction():
+            require_operator(conn, org, actor)
             receipt = reserve(conn, org, actor, request_key, fingerprint)
             if receipt:
                 status, result, replay = receipt["status_code"], receipt["response"], True
@@ -315,6 +323,7 @@ def create_app(settings: Settings):
         org, actor = current["organization_id"], current["user_id"]
         replay = False
         with conn.transaction():
+            require_operator(conn, org, actor)
             receipt = reserve(conn, org, actor, request_key, fingerprint)
             if receipt:
                 status, result, replay = receipt["status_code"], receipt["response"], True

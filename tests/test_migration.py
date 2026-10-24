@@ -142,9 +142,11 @@ def test_explicit_v1_migration_preserves_every_existing_row_and_old_retry_receip
     migrate(database_url)
     require_current_schema(database_url)
     after = database_snapshot(database_url)
-    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 3}]
+    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 4}]
     for table, rows in before["rows"].items():
-        if table != "schema_version":
+        if table == "users":
+            assert after["rows"][table] == [{**row, "role": "operator"} for row in rows]
+        elif table != "schema_version":
             assert after["rows"][table] == rows, table
     app = create_app(Settings(database_url=database_url, origin=ORIGIN, secure_cookie=False))
     with TestClient(app, raise_server_exceptions=False) as client:
@@ -230,7 +232,9 @@ def test_two_concurrent_migrations_upgrade_once_and_preserve_existing_rows(legac
     require_current_schema(database_url)
     after = database_snapshot(database_url)
     for table, rows in before["rows"].items():
-        if table != "schema_version":
+        if table == "users":
+            assert after["rows"][table] == [{**row, "role": "operator"} for row in rows]
+        elif table != "schema_version":
             assert after["rows"][table] == rows, table
 
 
@@ -292,7 +296,7 @@ def test_missing_schema_requires_explicit_initialization_instead_of_implicit_mig
     initialize(database_url)
     require_current_schema(database_url)
     assert database_snapshot(database_url)["rows"]["schema_version"] == [
-        {"singleton": True, "version": 3}
+        {"singleton": True, "version": 4}
     ]
 
 

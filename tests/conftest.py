@@ -51,7 +51,7 @@ def identities(database):
         return {
             row["email"]: row
             for row in conn.execute(
-                "SELECT id, organization_id, email FROM users ORDER BY email"
+                "SELECT id, organization_id, email, role FROM users ORDER BY email"
             ).fetchall()
         }
 

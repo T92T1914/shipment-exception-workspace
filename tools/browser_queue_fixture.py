@@ -15,11 +15,11 @@ def main():
     database_url = os.environ.get("WORKSPACE_QUEUE_FIXTURE_URL")
     if not database_url:
         raise RuntimeError("Set WORKSPACE_QUEUE_FIXTURE_URL to the disposable browser database")
-    expected = {"alex@northline.example", "sam@northline.example", "jules@harbor.example", "robin@harbor.example"}
+    expected = {"alex@northline.example", "sam@northline.example", "casey@northline.example", "jules@harbor.example", "robin@harbor.example", "taylor@harbor.example"}
     with connect(database_url) as conn, conn.transaction():
         accounts = {row["email"] for row in conn.execute("SELECT email FROM users").fetchall()}
         version = conn.execute("SELECT version FROM schema_version").fetchall()
-        if accounts != expected or version != [{"version": 3}]:
+        if accounts != expected or version != [{"version": 4}]:
             raise RuntimeError("Queue fixture requires the exact synthetic schema/account set")
         if conn.execute("SELECT 1 FROM shipment_exceptions WHERE reference LIKE 'NL-Q-%' OR reference LIKE 'HS-Q-%' LIMIT 1").fetchone():
             raise RuntimeError("Queue fixture exists. Use a fresh disposable consumer for another campaign")

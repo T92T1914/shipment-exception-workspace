@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS schema_version (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-    version integer NOT NULL CONSTRAINT schema_version_supported CHECK (version = 3)
+    version integer NOT NULL CONSTRAINT schema_version_supported CHECK (version = 4)
 );
 CREATE TABLE IF NOT EXISTS organizations (
     id uuid PRIMARY KEY,
@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     email text NOT NULL UNIQUE CHECK (email = lower(email)),
     name text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
     password_hash text NOT NULL,
+    role text NOT NULL DEFAULT 'reviewer' CONSTRAINT users_role_allowed CHECK (role IN ('operator', 'reviewer')),
     UNIQUE (organization_id, id)
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -84,5 +85,5 @@ CREATE TABLE IF NOT EXISTS login_identifiers (
 CREATE INDEX IF NOT EXISTS login_identifiers_expiry ON login_identifiers(reset_at);
 INSERT INTO login_global(singleton,attempts,reset_at) VALUES (true,0,clock_timestamp())
 ON CONFLICT (singleton) DO NOTHING;
-INSERT INTO schema_version(singleton, version) VALUES (true, 3)
+INSERT INTO schema_version(singleton, version) VALUES (true, 4)
 ON CONFLICT (singleton) DO NOTHING;

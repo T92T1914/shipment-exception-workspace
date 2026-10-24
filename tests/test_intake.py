@@ -426,4 +426,4 @@ def test_intake_treats_sql_and_html_text_as_literal_data(northline, database):
     assert saved.status_code == 200, saved.text
     assert {field: saved.json()["exception"][field] for field in body} == body
     with psycopg.connect(database) as conn:
-        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 4
+        assert conn.execute("SELECT count(*) FROM users").fetchone()[0] == 6
