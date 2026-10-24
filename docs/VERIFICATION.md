@@ -1,12 +1,12 @@
-# Login admission verification
+# Queue browsing verification
 
-The October 23, 2026 local campaign tested implementation commit
-[`e91d91a59c75a2f203aaf261567ffd50bf63b370`](https://github.com/T92T1914/shipment-exception-workspace/commit/e91d91a59c75a2f203aaf261567ffd50bf63b370)
-through a newly installed v0.3.0 wheel outside the checkout. Runtime source,
-tests and build configuration stayed unchanged across the seven sequential
-manifest checks. This evidence record and the new synthetic captures were added
-afterward. Earlier [v0.2.0](VERIFICATION-v0.2.0.md) and
-[v0.1.0](VERIFICATION-v0.1.0.md) records remain as history.
+The October 24, 2026 local campaign tested implementation commit
+[`b8e7f82684bd7dd1997285c88412142e56481d9d`](https://github.com/T92T1914/shipment-exception-workspace/commit/b8e7f82684bd7dd1997285c88412142e56481d9d)
+through a newly installed v0.4.0 wheel outside the checkout. Runtime source,
+tests and build configuration stayed unchanged across seven sequential manifest
+checks. This record and two synthetic captures were added afterward. The
+[v0.3.0](VERIFICATION-v0.3.0.md), [v0.2.0](VERIFICATION-v0.2.0.md) and
+[v0.1.0](VERIFICATION-v0.1.0.md) records retain their historical scope.
 
 ## Executed local results
 
@@ -19,108 +19,128 @@ No screen, interactive browser profile, clipboard, audio or visible app was used
 | Check | Actual result |
 | --- | --- |
 | TypeScript and Vite | Production build passed |
-| Wheel and source archive | Built v0.3.0; application/SQL byte identity, frontend, notices and both immutable SQL fixtures checked |
-| Fresh installation | Imported v0.3.0 from the external environment's site-packages; pip check passed |
-| Installed PostgreSQL suite | 131 passed in 87.46 seconds, including retained workflow checks and the new admission/upgrade boundaries |
-| Installed API restart | Real global budget exhaustion survived a fresh API process; a correct password still received 429; anonymous session and counter rows persisted |
-| Existing authenticated workflow | Assignment and creation receipt replay still worked while further login work was denied |
-| Built browser journeys | All 17 passed in 22.6 seconds, including actual desktop/narrow 429 and manual recovery |
-| Normal PostgreSQL restart | All row-value fingerprints unchanged, including the global admission row and two identifier rows, 22 sessions, 13 exceptions, 21 events and 23 receipts |
-| Independent semantic/security review | Separate agent inspected the composed code, tests and claims; no remaining actionable source finding in that scope |
+| Wheel and source archive | Built v0.4.0; application/SQL byte identity, frontend, notices and both immutable SQL fixtures checked |
+| Fresh installation | Imported v0.4.0 from the external environment's site-packages; pip check passed |
+| Installed PostgreSQL suite | 199 passed in 128.26 seconds, including 67 queue tests and retained workflow/admission checks |
+| Installed API restart | A bounded queue cursor continued after restart; durable creation/assignment receipt replay and exhausted login admission remained effective |
+| Built browser journeys | All 21 passed in 31.5 seconds, including multi-page desktop and narrow-screen queue behavior |
+| Normal PostgreSQL restart | All row-value fingerprints unchanged across nine tables, including 72 exceptions, 23 events, 25 receipts and 25 sessions |
+| Independent semantic/security review | A separate agent inspected the composed source, tests and claims; no remaining actionable source finding in that scope |
 
 The tested local wheel SHA-256 is
-`66c143e926487028053a6552e184fe1816f70668c3939c2363bd4f271fcb922b`.
+`c76ab5ca4cb41353a50c491e4b7827e023983bc13ebc91b80ef9f2382349ebc4`.
 The manifest's repository content fingerprint was
-`a3a8caccd9e02b679648e1846cbb6ea77b9c20dcc90e6eb99a232586f5e1b4e8`.
-Its before/after samples remained equal. Different environments and later
-documentation builds can produce different archive hashes. These identities
-describe the actual local campaign, not reproducible-build guarantees.
+`734ce47782ccbe558efa67a06e3fa4933740becd5035f6329a8cf8589496ca98`.
+Its before/after samples remained equal. The manifest SHA-256 was
+`5f6064f2aedcaf3c5745d3bd7b6372d927931dd3023692e8d7d8fc7be5186d89`.
+These identify this campaign, not reproducible-build guarantees. Later evidence
+commits and hosted rebuilds can produce different archive hashes.
 
-## What admission tests exercise
+## Queue and authorization checks
 
-Tests use actual PostgreSQL tables, locks and transactions. They check the
-twentieth identifier admission, fortieth global admission, known/unknown policy,
-normalization, no success refund, generic denial, no denied-row allocation,
-unchanged expiry and the later blocking Retry-After value. Envelope rejection
-does not charge either counter. Existing authenticated work remains available.
+Tests execute SQL through the installed package against actual PostgreSQL.
+Expected static traversal is calculated independently from reference UTF-8 bytes
+and UUID integer order. Cases cover the default 20 and maximum 50 rows, a
+one-row lookahead, last-returned-row cursors, terminal pages and complete
+unchanged-fixture traversal. Ordering and continuation use the same reference
+`COLLATE "C"` and UUID pair.
 
-Two independent clients compete for the last identifier or global slot. A
-separate connection takes the global row lock NOWAIT from inside a verification
-probe, establishing that the reservation is already committed and the lock
-released. Another regression holds the global row, confirms the request is
-waiting through PostgreSQL lock diagnostics, then moves expiry before release.
-It distinguishes a post-lock wall-clock sample from stale transaction-start time.
+Literal search cases include percent, underscore, the escape character,
+backslash, SQL-like text, markup, accented text and ASCII case comparisons.
+Search covers references and summaries, not details. Input checks exercise the
+decoded query's 80-character bound before trimming, NUL rejection, repeated and
+unknown parameters, invalid limits and statuses. Cursor checks cover strict
+base64url encoding, payload UTF-8, duplicate JSON keys, field types and bounds,
+invalid UUIDs, extra fields, excessive nesting and context mismatch. Framework
+URL parsing can replace malformed raw URL bytes before application validation;
+this is not strict raw-URL encoding acceptance.
 
-Threshold/race tests replace only the password-verification boundary with a
-narrow call probe. They are not Argon2 load measurements. Retained API tests and
-the installed consumer also execute real password hashing. Trigger failures
-check fail-closed admission rollback and retained charging when a later session
-write fails. A missing global state row performs no password verification.
+Organization isolation is checked with overlapping references, foreign cursors,
+forged positions and ignored organization headers. The authenticated session
+supplies the SQL organization constraint regardless of cursor content. The
+unsigned cursor is a navigation position, not authorization or an integrity
+token. A caller can invent a position within its own authorized results.
 
-Expiry tests move only disposable database fixture timestamps. Two directly
-advanced global windows exercise allocation of 80 identifier rows and denial
-without further growth. This checks a boundary fixture. The general 80-row
-argument in [Design](DESIGN.md) depends on normal writers, fixed expiries and the
-declared clock assumptions. It is not a measured attack-resistance result.
+Concurrent-change fixtures insert a row before the current position and move an
+anchor out of the open-status filter. Continuation does not require the anchor
+to remain in that filter. Refresh exposes earlier inserts. These establish the
+declared live-view behavior, not snapshot consistency or every interleaving.
+An off-page detail remains accessible only through its own organization check.
 
-The consumer performs one successful sign-in and 39 real failed verifications,
-then verifies that a denied correct-password attempt and counter state survive
-API restart. It explicitly expires only its synthetic admission fixtures before
-the separate browser campaign, preserving sessions and workflow history.
+## Installed consumer and browser evidence
 
-## Upgrade and browser evidence
+The consumer installed the ordinary wheel in a fresh isolated environment. It
+served packaged assets outside the checkout, signed in, committed and replayed
+mutations, exhausted login admission, restarted the API, and continued a saved
+one-row queue cursor. Authenticated reads and receipt replay still worked while
+new login verification was denied. Only synthetic admission timestamps were
+expired before the separate browser campaign; workflow history was retained.
 
-Both old SQL fixtures retain exact accepted Git blob identities:
+The 21 serial browser journeys retain the earlier 17 and add four queue cases.
+A dedicated synthetic fixture supplies 54 Northline and four Harbor queue rows.
+The unchanged Northline search traverses 20/20/14 rows without omissions or
+duplicates and returns to a previous page. Tests exercise status changes,
+resolution moving the selected record outside the refreshed filter, literal
+search on a 390-pixel viewport, empty recovery, keyboard submission and viewport
+fit. Direct links preserve selected off-page details after reload.
 
-- Schema 1: `a5c75d707fa08e65fc6d539424d7be333c8040c4`.
-- Schema 2: `c8f6bf47db94ae6b0dffeffd136606df1e2029be`.
+Held older requests exercise stale-response protection. One actual older page
+response is replaced with a browser-facing 500 after a newer search succeeds.
+The stale error cannot replace the new result. Another case creates from a later
+filtered page, checks the reset to all statuses and empty search, follows the
+new off-page selection, then switches organizations while an old query is held.
+The old response cannot restore the prior organization's private queue state.
+The substituted response is a client fixture, not an application-emitted fault.
 
-The installed suite upgrades each to schema 3, preserves prior rows, sessions,
-events and receipt fingerprints, and replays old assignment/creation outcomes.
-Concurrent migrations serialize. A failure during the second stage of the
-schema-one chain rolls back the earlier stage too. Repeating initialization or
-migration on schema 3 preserves live budgets. The fixtures are disposable and
-do not upgrade either retained accepted consumer database.
+The [desktop page-two](assets/desktop-queue-page-two.png) and
+[narrow literal-search](assets/mobile-queue-literal.png) captures were generated
+by these headless checks and visually inspected. They show synthetic records.
+They are not physical-device, screen-reader or live-user acceptance.
 
-The 17 serial browser journeys retain the previous 14 and add desktop/narrow
-admission recovery plus one malformed-header case. Actual 429 cases exhaust the
-dedicated synthetic identifier through a scoped SQL fixture, receive the real
-API's Retry-After, keep the session anonymous, block Enter and preserve cooldown
-when email changes. A second fixture expires server state and Playwright advances
-only the isolated browser clock. No automatic credential retry occurs. Manual
-submission then authenticates and logout confirms cleared password/cooldown.
+Schema remains 3. Both accepted SQL upgrade fixtures retain their original Git
+blob identities, and the suite still checks upgrades, rollback, history and
+receipt preservation. No accepted earlier consumer database was upgraded,
+reseeded or used for this campaign. After the final normal database restart,
+the new owned server and cluster were stopped and retained privately.
 
-The malformed-header case forwards a real wrong-password request, confirms its
-401, then substitutes a browser-facing 429 with an invalid Retry-After. It is a
-client-response fixture, not a claim that the application emits malformed headers.
-Keyboard focus, viewport fit and unexpected errors/external requests are checked.
-The generated desktop and 390-pixel captures were visually inspected. This is
-headless and controlled-clock evidence, not a physical phone or real minute wait.
+## Review, warnings and hosted checks
 
-## Limits, warnings and hosted checks
+Independent review found two issues before publication: older browser assertions
+still expected the former refresh notice, and initial prose overstated strict
+raw-URL UTF-8 rejection. The assertions now follow the actual UI notice while
+retaining response/version gates, and the prose distinguishes framework URL
+decoding from strict cursor payload decoding. The final source review is clear
+within its stated scope. It is an agent review, not a human security audit,
+penetration test or production assurance.
 
-Independent semantic review is an agent review of the supplied composition.
-Code Review exposes CI diagnostics and is used at that capability. Neither is a
-human security audit, penetration test, production assurance or hiring outcome.
-There is no login-policy effectiveness study, Python vulnerability audit, load
-qualification, power-loss/failover test or backup-restoration acceptance.
+The separate Code Review tool was unavailable in this session. GitHub supplies
+the actual hosted run, job and log diagnostics. No current Code Review result is
+claimed. Consensus returned no new research for this milestone; its earlier
+recorded quota limit was not bypassed. PostgreSQL and OWASP primary documentation
+support the design decisions, not measured effectiveness claims.
 
 The TestClient path retains Starlette's httpx deprecation warning. Browser output
-retains the NO_COLOR/FORCE_COLOR overlap. They did not fail the executed checks.
-No dependency pins, project license or notices changed. Credentials, raw logs,
-database files and test controls stay outside the public application interface.
+retains the NO_COLOR/FORCE_COLOR overlap. They did not fail the checks. No
+dependency pins, project license or notices changed. Credentials, database files,
+private raw logs and fixture controls are not public application endpoints.
 
 The [Actions workflow](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
 rebuilds on Ubuntu 24.04 using the pinned PostgreSQL 18.1 container, runs the
-suite through the wheel, installs a separate consumer and repeats restart plus
-all 17 journeys with Playwright's matching headless browser. Hosted outcomes
-are separate from the Windows results above. Current pull-request and main
-run pages identify the actual tested revisions and status. An older passing run
-does not accept a newer head. A version tag is not a permanent release asset.
+suite through the wheel, installs a separate consumer, and repeats restart plus
+all 21 journeys using Playwright's matching headless browser. Hosted outcomes
+are separate from the Windows results above. Run pages identify the actual
+tested revisions. An older passing run does not accept a newer head. A version
+tag is not a permanent release asset; Actions artifacts have limited retention.
 
-Build/install using the README. Database tests require an explicit disposable
-SHIPMENT_TEST_DATABASE_URL and replace its public schema. Browser cooldown tests
-also require WORKSPACE_FIXTURE_PYTHON pointing to the installed environment and
-WORKSPACE_LOGIN_FIXTURE_URL pointing to that clean synthetic consumer database.
-Never use either fixture route against retained or operational state. The
-standalone browser helper is test setup and supplies no HTTP control endpoint.
+Queue response size is bounded. Database scanning, sorting, latency and total
+request cost are not qualified. There is no scale benchmark, index-usage claim,
+full denial-of-service protection, production deployment, hiring outcome or
+security-role qualification. Search uses ASCII case handling under the declared
+collation rather than Unicode case folding. See [limitations](LIMITATIONS.md).
+
+Use the README build route. Database tests replace the public schema and require
+an explicit disposable SHIPMENT_TEST_DATABASE_URL. Browser fixtures require
+WORKSPACE_FIXTURE_PYTHON plus WORKSPACE_LOGIN_FIXTURE_URL and
+WORKSPACE_QUEUE_FIXTURE_URL pointing to the dedicated synthetic consumer
+database. The queue fixture refuses to overwrite its existing fixture records.
+Never run these fixture routes against retained or operational data.

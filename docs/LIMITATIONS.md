@@ -18,8 +18,22 @@ practice or suitability for sensitive logistics data.
 - New text inputs trim outer whitespace. Reference uniqueness is case-sensitive
   within an organization, so differently cased references remain distinct. No
   automatic deduplication, carrier reconciliation or legacy normalization occurs.
-- The queue is a small unpaginated list. There is no carrier feed, file upload,
-  notification system, forecasting, AI feature or general workflow engine.
+- The queue uses bounded server pages. The UI shows up to 20 records and the API
+  permits up to 50. Counts describe the current page, not all matches. There is
+  no global total, arbitrary sort, detail or audit search, export or full-text
+  ranking.
+- Search is a literal reference or summary substring with ASCII case-insensitive
+  matching under `C` collation. It does not provide Unicode case folding,
+  natural-language search or different creation-time reference identity rules.
+- Cursors are unsigned positions whose organization, search, status and page
+  size are checked against the request. They are not permissions, secrets or
+  durable bookmarks. Pages form a live view rather than a snapshot. An insertion
+  before the current position needs a refresh, status changes can alter result
+  membership, and fetching a previous page again can produce different contents.
+- A page-size cap does not bound database scanning, sorting or latency. No new
+  queue index, measured speed improvement or production capacity is claimed.
+  There is no carrier feed, file upload, notification system, forecasting, AI
+  feature or general workflow engine.
 - A pending retry is held only in the current page's memory. Closing or reloading
   that page loses the original retry key and body. A saved server receipt still
   exists, but the UI has no receipt browser or cross-device recovery flow. A
@@ -52,8 +66,10 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.3.0 provides an explicit transactional upgrade from schema 1 or 2 to 3.
-  Stop application processes and back up the dedicated database first. There is
+- Version 0.4.0 retains schema 3, so an existing v0.3.0 database needs no new
+  migration. The explicit transactional upgrade from schema 1 or 2 to 3 remains
+  available. Stop application processes and back up the dedicated database before
+  that upgrade. There is
   no downgrade, general migration framework or automatic startup upgrade. Older
   seeded records retain their original history without fabricated creation events.
   Backup restoration, disaster recovery and high availability remain outside the
@@ -76,6 +92,14 @@ test database is not configured. Migration tests drop and recreate the configure
 test database's entire `public` schema, so it must be disposable. A skipped
 integration test is not a pass. New implementation and test definitions are not
 executed acceptance until their results are recorded.
+
+The queue browser fixture adds 54 Northline and four Harbor synthetic records
+without invented audit events. It refuses existing fixture reference prefixes
+and requires an explicit `WORKSPACE_QUEUE_FIXTURE_URL`. Browser checks use
+`WORKSPACE_FIXTURE_PYTHON` to run that helper in the installed environment. This
+setup changes its database, so its target must be a fresh disposable consumer,
+never a retained accepted consumer or another project. The fixture is not a
+recovery tool, scale trial or performance measurement.
 
 Admission tests may set counter expiries or substitute a test clock inside a
 disposable database scenario. Those checks exercise declared boundaries without

@@ -105,6 +105,19 @@ form > label:not(:first-child) { margin-top: 1.1rem; }
 .count-marker { color: #becfd0; font-size: 1.9rem; font-weight: 300; letter-spacing: -.07em; }
 .filter-label { padding: 0 1.3rem 1.15rem; font-size: .7rem; font-weight: 500; margin: 0; color: #5e767e; }
 .filter-label select { margin-top: .4rem; padding: .55rem .7rem; font-size: .81rem; border-color: #d1dddf; background: #f8fafa; }
+.queue-search { padding: 0 1.3rem 1rem; }
+.queue-search label { font-size: .72rem; }
+.queue-search input { padding: .6rem .7rem; font-size: .82rem; }
+.queue-search-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }
+.queue-search-actions .button { flex: 1 1 110px; padding: .5rem .65rem; min-height: 38px; font-size: .73rem; }
+.queue-query { margin-top: .65rem; font-size: .72rem; line-height: 1.5; color: #587079; overflow-wrap: anywhere; }
+.queue-pages { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; padding: 1rem 1.1rem .7rem; border-top: 1px solid var(--line); }
+.queue-pages .button { padding: .5rem .6rem; min-height: 38px; font-size: .7rem; flex: 1 1 90px; }
+.queue-pages > span { font-size: .7rem; color: #5e767e; white-space: nowrap; }
+.queue-live-note { color: #6b8087; font-size: .68rem; line-height: 1.5; padding: 0 1.3rem 1rem; }
+.panel-empty .button { margin-top: .75rem; }
+.queue-error { color: #7a3527; }
+.queue-selection-note { color: #526f69; background: #f1f7f5; border: 1px solid #d2e3dd; padding: .75rem .9rem; border-radius: 6px; margin-bottom: 1.2rem; font-size: .75rem; line-height: 1.6; }
 .exception-list { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
 .exception-list li + li { border-top: 1px solid #e4ebec; }
 .exception-row { display: block; width: 100%; text-align: left; padding: 1.1rem 1.3rem; border: 0; border-left: 3px solid transparent; background: #fff; color: #354f58; }

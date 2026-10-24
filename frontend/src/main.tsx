@@ -16,6 +16,9 @@ type AuditEvent = {
   assignee_name: string | null; note: string | null; version: number; created_at: string;
 };
 type Detail = { exception: ShipmentException; events: AuditEvent[] };
+type QueueStatus = 'all' | 'open' | 'resolved';
+type QueueRequest = { status: QueueStatus; q: string; cursors: (string | null)[]; index: number };
+type QueuePage = { items: ShipmentException[]; next_cursor: string | null; page_size: number };
 type CreateFields = { reference: string; summary: string; details: string; priority: 'normal' | 'high' };
 type ChangeIntent = { action: 'create'; body: CreateFields } | {
   id: string; action: 'assign' | 'resolve';
@@ -23,6 +26,19 @@ type ChangeIntent = { action: 'create'; body: CreateFields } | {
 };
 type PendingChange = Readonly<{ id?: string; action: 'create' | 'assign' | 'resolve'; key: string; url: string; body: string }>;
 const emptyCreateFields: CreateFields = { reference: '', summary: '', details: '', priority: 'normal' };
+const firstQueuePage = (status: QueueStatus = 'all', q = ''): QueueRequest => ({ status, q, cursors: [null], index: 0 });
+
+function queuePath(view: QueueRequest): string {
+  const params = new URLSearchParams();
+  if (view.status !== 'all') params.set('status', view.status);
+  if (view.q) params.set('q', view.q);
+  const cursor = view.cursors[view.index];
+  if (cursor) params.set('cursor', cursor);
+  // The API's default page is 20. Keep a plain first-page URL when no filter is
+  // applied, while explicitly carrying the page size with continuation context.
+  if (params.size) params.set('limit', '20');
+  return `/api/exceptions${params.size ? `?${params.toString()}` : ''}`;
+}
 
 class ApiError extends Error {
   status: number;
@@ -111,7 +127,11 @@ function App() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [assignment, setAssignment] = useState('');
   const [resolution, setResolution] = useState('');
-  const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const [queue, setQueue] = useState<QueueRequest>(firstQueuePage);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -124,24 +144,56 @@ function App() {
   const activeUser = useRef<string | null>(null);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const queueRef = useRef(queue);
+  const queueBusy = useRef(false);
   activeUser.current = session?.user?.id ?? null;
 
   const clearPrivateState = useCallback(() => {
     listRequest.current++; detailRequest.current++;
     setItems([]); setMembers([]); setDetail(null); setResolution('');
+    const reset = firstQueuePage();
+    queueRef.current = reset; setQueue(reset); setSearchDraft('');
+    queueBusy.current = false;
+    setNextCursor(null); setQueueError(''); setQueueLoading(false);
     setCreating(false); setCreateFields({ ...emptyCreateFields });
     setPending(null); pendingRef.current = null;
   }, []);
 
-  const loadLists = useCallback(async (signal?: AbortSignal) => {
+  const beginQueue = useCallback((view: QueueRequest) => {
+    // Invalidate synchronously: an older response can arrive before React has
+    // rendered the new query or page selection.
+    listRequest.current++;
+    queueBusy.current = true;
+    queueRef.current = view; setQueue(view);
+    setItems([]); setNextCursor(null); setQueueError(''); setQueueLoading(true);
+    return view;
+  }, []);
+
+  const loadLists = useCallback(async (view: QueueRequest, signal?: AbortSignal) => {
     const generation = ++listRequest.current;
     const user = activeUser.current;
-    const [list, team] = await Promise.all([
-      request<{ items: ShipmentException[] }>('/api/exceptions', { signal }),
-      request<{ items: Member[] }>('/api/members', { signal }),
-    ]);
-    if (generation === listRequest.current && user === activeUser.current) {
-      setItems(list.items); setMembers(team.items);
+    const current = () => generation === listRequest.current && user === activeUser.current && view === queueRef.current;
+    setQueueLoading(true);
+    try {
+      const [list, team] = await Promise.all([
+        request<QueuePage>(queuePath(view), { signal }),
+        request<{ items: Member[] }>('/api/members', { signal }),
+      ]);
+      if (!current()) return false;
+      if (!Array.isArray(list.items) || list.items.length > 20 || list.page_size !== 20 ||
+          (list.next_cursor !== null && (typeof list.next_cursor !== 'string' || !list.next_cursor || list.next_cursor.length > 2048))) {
+        throw new ApiError(0, 'unreadable_queue', 'The queue response could not be read.');
+      }
+      setItems(list.items); setNextCursor(list.next_cursor); setMembers(team.items); setQueueError('');
+      return true;
+    } catch (failure) {
+      if (!current() || (failure instanceof DOMException && failure.name === 'AbortError')) return false;
+      if (!(failure instanceof ApiError && failure.status === 401)) {
+        setQueueError('The queue could not be loaded. Change the search or return to the first page.');
+      }
+      throw failure;
+    } finally {
+      if (current()) { queueBusy.current = false; setQueueLoading(false); }
     }
   }, []);
 
@@ -203,10 +255,13 @@ function App() {
   useEffect(() => {
     if (!session?.authenticated) return;
     const controller = new AbortController();
-    setLoading(true);
-    loadLists(controller.signal).catch(handleError).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    const view = beginQueue(queueRef.current);
+    const user = activeUser.current;
+    loadLists(view, controller.signal).catch(failure => {
+      if (view === queueRef.current && user === activeUser.current && failure instanceof ApiError && failure.status === 401) void handleError(failure);
+    });
     return () => controller.abort();
-  }, [session?.authenticated, loadLists, handleError]);
+  }, [session?.authenticated, session?.user?.id, beginQueue, loadLists, handleError]);
 
   useEffect(() => {
     setDetail(null); setResolution(''); setConflict(false);
@@ -254,13 +309,59 @@ function App() {
   }
 
   async function refreshCurrent() {
+    if (busy || pendingRef.current) return;
     setBusy(true); setError('');
+    const user = activeUser.current;
+    const view = beginQueue(firstQueuePage(queueRef.current.status, queueRef.current.q));
     try {
-      await loadLists();
+      await loadLists(view);
+      if (user !== activeUser.current) return;
       if (selectedId) await loadDetail(selectedId);
-      setConflict(false); setNotice('Showing the latest saved record. Review it before making another change.');
-    } catch (failure) { await handleError(failure); }
+      if (user === activeUser.current) {
+        setConflict(false); setNotice('Showing the first queue page and the latest saved record. Review it before making another change.');
+      }
+    } catch (failure) { if (user === activeUser.current && view === queueRef.current) await handleError(failure); }
     finally { setBusy(false); }
+  }
+
+  async function browseQueue(view: QueueRequest) {
+    if (busy || pendingRef.current) return;
+    const user = activeUser.current;
+    beginQueue(view); setNotice('');
+    try { await loadLists(view); }
+    catch (failure) {
+      if (view === queueRef.current && user === activeUser.current && failure instanceof ApiError && failure.status === 401) await handleError(failure);
+    }
+  }
+
+  function searchQueue(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy || pendingRef.current) return;
+    const q = searchDraft.trim();
+    setSearchDraft(q);
+    void browseQueue(firstQueuePage(queueRef.current.status, q));
+  }
+
+  function changeQueueStatus(status: QueueStatus) {
+    void browseQueue(firstQueuePage(status, queueRef.current.q));
+  }
+
+  function clearSearch() {
+    if (busy || pendingRef.current) return;
+    setSearchDraft('');
+    void browseQueue(firstQueuePage(queueRef.current.status));
+  }
+
+  function nextPage() {
+    if (queueBusy.current || !nextCursor) return;
+    const view = queueRef.current;
+    void browseQueue({ ...view, cursors: [...view.cursors.slice(0, view.index + 1), nextCursor], index: view.index + 1 });
+  }
+
+  function previousPage() {
+    const view = queueRef.current;
+    if (queueBusy.current || view.index === 0) return;
+    void browseQueue({ ...view, index: view.index - 1 });
   }
 
   async function sendChange(intent: ChangeIntent | PendingChange) {
@@ -297,10 +398,11 @@ function App() {
       pendingRef.current = null; setPending(null);
       setResolution('');
       if (change.action === 'create') {
-        setCreateFields({ ...emptyCreateFields }); setCreating(false); setFilter('all');
+        setCreateFields({ ...emptyCreateFields }); setCreating(false); setSearchDraft('');
         window.location.hash = `exception/${result.exception.id}`;
       }
-      await loadLists();
+      const view = beginQueue(change.action === 'create' ? firstQueuePage() : firstQueuePage(queueRef.current.status, queueRef.current.q));
+      await loadLists(view);
       if (change.action !== 'create' && change.id && selectedFromHash() === change.id) await loadDetail(change.id);
       if (user === activeUser.current) setNotice(change.action === 'create' ? 'Exception created.' : change.action === 'assign' ? 'Assignment saved.' : 'Exception resolved.');
     } catch (failure) {
@@ -356,12 +458,11 @@ function App() {
     void sendChange({ action: 'create', body });
   }
 
-  const visible = items.filter(item => filter === 'all' || item.status === filter);
-  const openCount = items.filter(item => item.status === 'open').length;
   const locked = busy || !!pending || conflict;
   const current = detail?.exception;
   const events = detail?.events ?? [];
   const loginBlocked = loginWait !== null && loginWait.seconds > 0;
+  const selectedOutsidePage = !!current && !queueLoading && !queueError && !items.some(item => item.id === current.id);
 
   return <>
     <div className="demo-banner"><span className="demo-dot" aria-hidden="true" /> Synthetic workspace <span className="demo-separator">/</span> Fictional organizations and shipment records</div>
@@ -391,9 +492,17 @@ function App() {
       </div>
       <div className="work-columns">
         <section className="queue-panel" aria-labelledby="queue-title">
-          <div className="panel-heading"><div><h2 id="queue-title">Your organization</h2><p>{openCount} open / {items.length} total</p></div><span className="count-marker" aria-hidden="true">{items.length.toString().padStart(2, '0')}</span></div>
-          <label className="filter-label" htmlFor="status-filter">Show exceptions<select id="status-filter" aria-label="Show exceptions" value={filter} onChange={event => setFilter(event.target.value as typeof filter)}><option value="all">All statuses</option><option value="open">Open</option><option value="resolved">Resolved</option></select></label>
-          {loading ? <p className="panel-empty" role="status">Loading exceptions...</p> : visible.length === 0 ? <p className="panel-empty">No exceptions match this status.</p> : <ul className="exception-list">{visible.map(item => <li key={item.id}><button className={`exception-row ${selectedId === item.id ? 'selected' : ''}`} onClick={() => { window.location.hash = `exception/${item.id}`; }} disabled={!!pending || busy} aria-current={selectedId === item.id ? 'true' : undefined}><span className="row-top"><span className="reference">{item.reference}</span><Status item={item} /></span><strong>{item.summary}</strong><span className="row-bottom"><span>{item.assignee_name ?? 'Unassigned'}</span><span className={`priority priority-${item.priority}`}>{item.priority === 'high' ? 'High priority' : 'Normal priority'}</span></span></button></li>)}</ul>}
+          <div className="panel-heading"><div><h2 id="queue-title">Your organization</h2><p aria-live="polite">{queueLoading ? `Loading page ${queue.index + 1}` : `${items.length} on this page / Page ${queue.index + 1}`}</p></div><span className="count-marker" aria-hidden="true">{items.length.toString().padStart(2, '0')}</span></div>
+          <form className="queue-search" onSubmit={searchQueue} aria-label="Search exception queue">
+            <label htmlFor="queue-search">Search references and summaries</label>
+            <input id="queue-search" type="search" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} maxLength={80} disabled={busy || !!pending} autoComplete="off" />
+            <div className="queue-search-actions"><button className="button secondary" type="submit" disabled={busy || !!pending}>Search queue</button><button className="button secondary" type="button" onClick={clearSearch} disabled={busy || !!pending || (!searchDraft && !queue.q)}>Clear search</button></div>
+            {queue.q && <p className="queue-query">Results for <strong>{queue.q}</strong></p>}
+          </form>
+          <label className="filter-label" htmlFor="status-filter">Show exceptions<select id="status-filter" aria-label="Show exceptions" value={queue.status} onChange={event => changeQueueStatus(event.target.value as QueueStatus)} disabled={busy || !!pending}><option value="all">All statuses</option><option value="open">Open</option><option value="resolved">Resolved</option></select></label>
+          {queueError ? <div className="panel-empty queue-error" role="alert"><p>{queueError}</p><button className="button secondary" type="button" onClick={() => void browseQueue(firstQueuePage(queueRef.current.status, queueRef.current.q))} disabled={busy || !!pending}>Return to first page</button></div> : queueLoading ? <p className="panel-empty" role="status">Loading exceptions...</p> : items.length === 0 ? <div className="panel-empty"><p>No exceptions match this search and status on this page.</p>{queue.index > 0 && <button className="button secondary" type="button" onClick={() => void browseQueue(firstQueuePage(queueRef.current.status, queueRef.current.q))} disabled={busy || !!pending}>Return to first page</button>}</div> : <ul className="exception-list">{items.map(item => <li key={item.id}><button className={`exception-row ${selectedId === item.id ? 'selected' : ''}`} onClick={() => { window.location.hash = `exception/${item.id}`; }} disabled={!!pending || busy} aria-current={selectedId === item.id ? 'true' : undefined}><span className="row-top"><span className="reference">{item.reference}</span><Status item={item} /></span><strong>{item.summary}</strong><span className="row-bottom"><span>{item.assignee_name ?? 'Unassigned'}</span><span className={`priority priority-${item.priority}`}>{item.priority === 'high' ? 'High priority' : 'Normal priority'}</span></span></button></li>)}</ul>}
+          <nav className="queue-pages" aria-label="Exception queue pages"><button className="button secondary" type="button" onClick={previousPage} disabled={busy || !!pending || queueLoading || queue.index === 0}>Previous page</button><span>Page {queue.index + 1}</span><button className="button secondary" type="button" onClick={nextPage} disabled={busy || !!pending || queueLoading || !!queueError || !nextCursor}>Next page</button></nav>
+          <p className="queue-live-note">Pages show live results. Refresh the workspace to start again.</p>
         </section>
 
         <section className="detail-panel" aria-label="Exception detail">
@@ -410,6 +519,7 @@ function App() {
               <div className="intake-actions"><button className="button primary" type="submit" disabled={locked || !createFields.reference.trim() || !createFields.summary.trim() || !createFields.details.trim()}>Create exception</button><button className="button secondary" type="button" onClick={() => { window.location.hash = ''; }} disabled={busy || !!pending}>Cancel intake</button></div>
             </form>
           </section> : !selectedId ? <div className="empty-detail"><div className="empty-icon" aria-hidden="true">[ ]</div><h2>Choose an exception</h2><p>Open a record to review the details, assign ownership, or document a resolution.</p></div> : detailLoading ? <p className="panel-empty" role="status">Loading record...</p> : !current ? <div className="panel-empty"><h2>Record unavailable</h2><p>Return to the queue or refresh to try again.</p></div> : <>
+            {selectedOutsidePage && <p className="queue-selection-note" role="status">This selected record is outside the current queue page or filters. Its details remain open.</p>}
             <div className="detail-heading"><div><p className="reference">{current.reference}</p><h2>{current.summary}</h2></div><Status item={current} /></div>
             <div className="record-meta"><span>Version {current.version}</span><span>Updated {dateLabel(current.updated_at)}</span><span className={`priority priority-${current.priority}`}>{current.priority === 'high' ? 'High priority' : 'Normal priority'}</span></div>
             <div className="detail-description"><h3>What needs attention</h3><p>{current.details}</p></div>

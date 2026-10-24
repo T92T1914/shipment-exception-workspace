@@ -20,8 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from .config import Settings
-from .db import EXCEPTION_SELECT, PASSWORDS, connect, exception_record, require_current_schema
+from .db import PASSWORDS, connect, exception_record, require_current_schema
 from .login_admission import reserve_login
+from .queue_browsing import InvalidQueueQuery, page_for
 
 COOKIE = "shipment_session"
 MAX_BODY = 16384
@@ -241,8 +242,11 @@ def create_app(settings: Settings):
         return {"items": conn.execute("SELECT id,name,email FROM users WHERE organization_id=%s ORDER BY name", (current["organization_id"],)).fetchall()}
 
     @app.get("/api/exceptions")
-    def exceptions(current=Depends(principal), conn=Depends(connection)):
-        return {"items": conn.execute(EXCEPTION_SELECT + " WHERE e.organization_id=%s ORDER BY e.reference", (current["organization_id"],)).fetchall()}
+    def exceptions(request: Request, current=Depends(principal), conn=Depends(connection)):
+        try:
+            return page_for(conn, current["organization_id"], request.query_params)
+        except InvalidQueueQuery:
+            raise Problem(422, "invalid_queue_query", "Check the queue search, status and page parameters.")
 
     @app.get("/api/exceptions/{exception_id}")
     def detail(exception_id: UUID, current=Depends(principal), conn=Depends(connection)):
