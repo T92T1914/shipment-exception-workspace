@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const demoPassword = process.env.WORKSPACE_DEMO_PASSWORD;
 if (!demoPassword) throw new Error('WORKSPACE_DEMO_PASSWORD must be set for the synthetic seeded accounts.');
@@ -626,3 +627,162 @@ for (const [mode, label] of [
     await createAfterUncertainResponse(page, mode);
   });
 }
+
+function loginAdmissionFixture(command: 'exhaust' | 'expire') {
+  const python = process.env.WORKSPACE_FIXTURE_PYTHON;
+  if (!python || !process.env.WORKSPACE_LOGIN_FIXTURE_URL) {
+    throw new Error('The scoped login-admission fixture environment must be set explicitly.');
+  }
+  const result = spawnSync(python, ['../tools/browser_login_fixture.py', command], {
+    cwd: process.cwd(), env: process.env, encoding: 'utf8', windowsHide: true,
+    timeout: 10_000, maxBuffer: 64 * 1024,
+  });
+  // Child diagnostics can contain a connection URL. Only validated, nonsensitive
+  // acknowledgement fields are accepted or reported to the test runner.
+  if (result.error || result.status !== 0) {
+    throw new Error(`Login-admission fixture ${command} failed (exit ${result.status ?? 'unavailable'}).`);
+  }
+  let acknowledgement;
+  try { acknowledgement = JSON.parse(result.stdout.trim()); }
+  catch { throw new Error(`Login-admission fixture ${command} did not return a valid acknowledgement.`); }
+  if (acknowledgement?.command !== command || acknowledgement?.ok !== true) {
+    throw new Error(`Login-admission fixture ${command} did not confirm the requested operation.`);
+  }
+}
+
+async function prepareSignIn(page: Page, password = demoPassword!) {
+  await page.goto('/');
+  const email = page.getByLabel('Email address', { exact: true });
+  const passwordInput = page.getByLabel('Password', { exact: true });
+  await expect(email).toBeVisible();
+  await email.focus();
+  await page.keyboard.press('Tab');
+  await expect(passwordInput).toBeFocused();
+  await email.fill('alex@northline.example');
+  await passwordInput.fill(password);
+  return { email, password: passwordInput, submit: page.getByRole('button', { name: 'Sign in', exact: true }) };
+}
+
+async function expectAnonymousSession(page: Page) {
+  const response = await page.request.get('/api/session');
+  expect(response.status()).toBe(200);
+  expect((await response.json()).authenticated).toBe(false);
+}
+
+for (const viewport of [
+  { label: 'desktop', width: 1440, height: 1000 },
+  { label: 'narrow', width: 390, height: 844 },
+] as const) {
+  test(`real login admission throttles ${viewport.label} sign-in until fixture expiry and an explicit manual retry`, async ({ page }) => {
+    test.info().annotations.push({ type: 'evidence', description: 'Actual PostgreSQL admission and real 429. Server windows expire through a scoped SQL fixture. Only isolated browser time is advanced, not a real 60 second wait or the server clock.' });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    // Playwright clock emulation must be installed before the application's
+    // performance clock or timers are used. It does not change PostgreSQL time.
+    await page.clock.install();
+    const assertBrowser = observeBrowser(page, { expectedStatus: 429 });
+    let loginPosts = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/login') loginPosts++;
+    });
+    loginAdmissionFixture('exhaust');
+    try {
+      const form = await prepareSignIn(page);
+      const firstResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/login');
+      await form.submit.click();
+      const throttled = await firstResponse;
+      expect(throttled.status()).toBe(429);
+      const retryAfter = throttled.headers()['retry-after'];
+      expect(retryAfter).toMatch(/^\d+$/);
+      expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+      expect(Number(retryAfter)).toBeLessThanOrEqual(60);
+      const error = (await throttled.json()).error;
+      expect(error.code).toBe('login_throttled');
+      expect(error.message).toBe('Too many sign-in attempts. Wait before trying again.');
+      await expect(page.getByRole('alert')).toHaveText(error.message);
+      await expect(page.locator('#login-wait')).toContainText('Try again in');
+      await expect(page.locator('#login-wait')).toContainText('The server decides when sign-in is allowed.');
+      await expect(form.submit).toBeDisabled();
+      await expect(form.email).toBeEditable();
+      await expect(form.password).toBeEditable();
+      await expectAnonymousSession(page);
+      await form.password.press('Enter');
+      await page.clock.runFor(1000);
+      expect(loginPosts).toBe(1);
+      await form.email.fill('sam@northline.example');
+      await expect(form.submit).toBeDisabled();
+      await form.email.fill('alex@northline.example');
+      await assertNoHorizontalOverflow(page);
+      await screenshot(page, `${viewport.label}-login-throttled.png`);
+
+      // Actual server recovery comes from the scoped database fixture. Advancing
+      // the browser clock only releases the local reminder and submit control.
+      loginAdmissionFixture('expire');
+      await page.clock.fastForward(61_000);
+      await expect(page.locator('#login-wait')).toContainText('The countdown has ended.');
+      await expect(form.submit).toBeEnabled();
+      expect(loginPosts).toBe(1);
+      await expectAnonymousSession(page);
+      await form.submit.click();
+      await expect(page.getByRole('heading', { name: 'Shipment exceptions', exact: true })).toBeVisible();
+      await expect(page.locator('.identity')).toContainText('Northline Logistics');
+      expect(loginPosts).toBe(2);
+      const authenticated = await page.request.get('/api/session');
+      expect(authenticated.status()).toBe(200);
+      const session = await authenticated.json();
+      expect(session.authenticated).toBe(true);
+      expect(session.user.email).toBe('alex@northline.example');
+      await assertNoHorizontalOverflow(page);
+      await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+      await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+      await expect(page.locator('#login-wait')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+      assertBrowser();
+    } finally {
+      loginAdmissionFixture('expire');
+    }
+  });
+}
+
+test('a malformed Retry-After response fixture allows honest manual recovery without automatic login', async ({ page }) => {
+  test.info().annotations.push({ type: 'fixture-only', description: 'The real server rejects a wrong password with 401. Only its browser-facing response is substituted with 429 and a malformed Retry-After header to test client recovery.' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.install();
+  const assertBrowser = observeBrowser(page, { expectedStatus: 429 });
+  let loginPosts = 0;
+  let interceptedAttempts = 0;
+  let originalStatus: number | undefined;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/login') loginPosts++;
+  });
+  loginAdmissionFixture('expire');
+  try {
+    await page.route('**/api/login', async route => {
+      interceptedAttempts++;
+      if (interceptedAttempts === 1) {
+        const actual = await route.fetch();
+        originalStatus = actual.status();
+        await route.fulfill({ status: 429, contentType: 'application/json', headers: { 'Retry-After': 'not-a-delay' },
+          body: JSON.stringify({ error: { code: 'login_throttled', message: 'Too many sign-in attempts. Wait before trying again.' } }) });
+      } else { await route.continue(); }
+    });
+    const form = await prepareSignIn(page, `${demoPassword!}-invalid`);
+    await form.submit.click();
+    await expect(page.locator('#login-wait')).toContainText('The server did not provide a usable retry time.');
+    expect(originalStatus).toBe(401);
+    await expect(form.submit).toBeEnabled();
+    await expect(form.password).toBeEditable();
+    await expectAnonymousSession(page);
+    await page.clock.fastForward(61_000);
+    expect(loginPosts).toBe(1);
+    await expectAnonymousSession(page);
+    await assertNoHorizontalOverflow(page);
+    await form.password.fill(demoPassword!);
+    await form.submit.click();
+    await expect(page.getByRole('heading', { name: 'Shipment exceptions', exact: true })).toBeVisible();
+    await expect(page.locator('.identity')).toContainText('Northline Logistics');
+    expect(loginPosts).toBe(2);
+    assertBrowser();
+  } finally {
+    loginAdmissionFixture('expire');
+  }
+});

@@ -31,8 +31,19 @@ practice or suitability for sensitive logistics data.
 - The CLI serves loopback HTTP only. Transport security, reverse proxies,
   externally reachable hosting and secure production cookie configuration have
   not been accepted as a deployment route.
-- There is no login rate limiter, abuse protection, multifactor authentication,
-  device management or session-management UI.
+- Login admission permits 20 password verifications per normalized identifier
+  and 40 globally in each counter's fixed 60-second window. It counts correct
+  passwords too and does not reset on success. It is not a failed-attempt-only
+  lockout, sliding-window limiter or complete abuse-prevention system.
+- A caller can exhaust the global budget and temporarily deny all new logins.
+  Fixed windows allow bursts around expiry, and counter expiries need not align.
+  Other routes, including anonymous-session creation, have no admission limiter.
+  Anonymous-session flooding, distributed attacks and production availability
+  remain unsolved. There is no MFA, device management or session-management UI.
+- Identifier digests are SHA-256 of the trimmed, lowercased submitted email. A
+  digest does not anonymize a guessable identifier. Known and unknown addresses
+  share the admission policy, but broad timing-side-channel resistance has not
+  been established. There is no IP or forwarded-header reputation system.
 - Authorization is enforced in the application and supported by relational
   constraints. PostgreSQL row-level security is not configured. A database
   administrator can read or alter application data.
@@ -41,7 +52,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.2.0 provides one explicit transactional upgrade from schema 1 to 2.
+- Version 0.3.0 provides an explicit transactional upgrade from schema 1 or 2 to 3.
   Stop application processes and back up the dedicated database first. There is
   no downgrade, general migration framework or automatic startup upgrade. Older
   seeded records retain their original history without fabricated creation events.
@@ -49,7 +60,10 @@ practice or suitability for sensitive logistics data.
   accepted workflow.
 - Request bodies and field lengths are bounded, but the application has not been
   load tested. Two concurrent synchronous handlers and one server worker keep
-  the local resource footprint small.
+  the local resource footprint small. The derived 80-row bound for identifier
+  admission state assumes the normal serialized application writer and database
+  clock. It is not a measured protection against denial of service or privileged
+  database changes. Expired rows are removed at the next admission check.
 - Dependency pins describe the tested environment. They do not guarantee that
   every package is free of vulnerabilities or that future releases behave
   identically. The release does not bundle or update the system PostgreSQL server.
@@ -62,6 +76,13 @@ test database is not configured. Migration tests drop and recreate the configure
 test database's entire `public` schema, so it must be disposable. A skipped
 integration test is not a pass. New implementation and test definitions are not
 executed acceptance until their results are recorded.
+
+Admission tests may set counter expiries or substitute a test clock inside a
+disposable database scenario. Those checks exercise declared boundaries without
+claiming real elapsed-time throughput, timing indistinguishability or resistance
+to a live attack. A browser countdown is a client hint. The server reevaluates
+admission on the next explicit submission, and the UI does not retry passwords
+automatically.
 
 The installed consumer restarts the API process. A separate normal PostgreSQL
 process restart checks that saved records remain available. These are not

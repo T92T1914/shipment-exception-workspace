@@ -142,7 +142,7 @@ def test_explicit_v1_migration_preserves_every_existing_row_and_old_retry_receip
     migrate(database_url)
     require_current_schema(database_url)
     after = database_snapshot(database_url)
-    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 2}]
+    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 3}]
     for table, rows in before["rows"].items():
         if table != "schema_version":
             assert after["rows"][table] == rows, table
@@ -166,7 +166,7 @@ def test_explicit_v1_migration_preserves_every_existing_row_and_old_retry_receip
     assert database_snapshot(database_url) == after
 
 
-def test_v2_allows_new_creation_after_upgrading_an_actual_v1_database(legacy_database):
+def test_current_schema_allows_new_creation_after_upgrading_an_actual_v1_database(legacy_database):
     database_url, _ = legacy_database
     migrate(database_url)
     before = database_snapshot(database_url)
@@ -292,7 +292,7 @@ def test_missing_schema_requires_explicit_initialization_instead_of_implicit_mig
     initialize(database_url)
     require_current_schema(database_url)
     assert database_snapshot(database_url)["rows"]["schema_version"] == [
-        {"singleton": True, "version": 2}
+        {"singleton": True, "version": 3}
     ]
 
 
@@ -305,3 +305,24 @@ def test_missing_metadata_does_not_relabel_remaining_legacy_tables_as_current(le
         with pytest.raises(RuntimeError):
             operation(database_url)
         assert database_snapshot(database_url) == before
+
+
+def test_failure_in_second_upgrade_stage_rolls_back_the_entire_v1_chain(legacy_database):
+    database_url, _ = legacy_database
+    before = database_snapshot(database_url)
+    with psycopg.connect(database_url) as conn:
+        conn.execute("""CREATE FUNCTION test_reject_only_v3() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN IF NEW.version=3 THEN RAISE EXCEPTION 'synthetic second-stage upgrade failure';
+            END IF; RETURN NEW; END; $$""")
+        conn.execute("""CREATE TRIGGER test_second_upgrade_failure BEFORE UPDATE ON schema_version
+            FOR EACH ROW EXECUTE FUNCTION test_reject_only_v3()""")
+    try:
+        with pytest.raises(psycopg.Error):
+            migrate(database_url)
+        assert database_snapshot(database_url) == before
+    finally:
+        with psycopg.connect(database_url) as conn:
+            conn.execute("DROP TRIGGER IF EXISTS test_second_upgrade_failure ON schema_version")
+            conn.execute("DROP FUNCTION IF EXISTS test_reject_only_v3()")
+    migrate(database_url)
+    require_current_schema(database_url)

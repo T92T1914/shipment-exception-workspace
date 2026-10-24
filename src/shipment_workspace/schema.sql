@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS schema_version (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-    version integer NOT NULL CONSTRAINT schema_version_supported CHECK (version = 2)
+    version integer NOT NULL CONSTRAINT schema_version_supported CHECK (version = 3)
 );
 CREATE TABLE IF NOT EXISTS organizations (
     id uuid PRIMARY KEY,
@@ -71,5 +71,18 @@ CREATE TABLE IF NOT EXISTS mutation_requests (
     CHECK ((status_code IS NULL AND response IS NULL) OR
            (status_code IS NOT NULL AND status_code BETWEEN 200 AND 499 AND response IS NOT NULL))
 );
-INSERT INTO schema_version(singleton, version) VALUES (true, 2)
+CREATE TABLE IF NOT EXISTS login_global (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    attempts integer NOT NULL CHECK (attempts BETWEEN 0 AND 40),
+    reset_at timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS login_identifiers (
+    identifier_hash text PRIMARY KEY CHECK (identifier_hash ~ '^[0-9a-f]{64}$'),
+    attempts integer NOT NULL CHECK (attempts BETWEEN 1 AND 20),
+    reset_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS login_identifiers_expiry ON login_identifiers(reset_at);
+INSERT INTO login_global(singleton,attempts,reset_at) VALUES (true,0,clock_timestamp())
+ON CONFLICT (singleton) DO NOTHING;
+INSERT INTO schema_version(singleton, version) VALUES (true, 3)
 ON CONFLICT (singleton) DO NOTHING;
