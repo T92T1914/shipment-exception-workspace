@@ -63,6 +63,10 @@ The sign-in form shows a temporary wait and keeps the email editable. Its
 countdown is a local reminder, and the server decides whether the next explicit
 submission is allowed. The UI does not retry a password automatically.
 
+The [desktop cooldown](docs/assets/desktop-login-throttled.png) and
+[narrow-mobile cooldown](docs/assets/mobile-login-throttled.png) captures show
+the exercised wait state with synthetic credentials.
+
 This bounds one kind of local password-verification work. One caller can spend
 the global budget and temporarily block other users' new sign-ins. Fixed windows
 also allow bursts across a boundary. Other routes, including anonymous-session
