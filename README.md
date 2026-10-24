@@ -82,6 +82,10 @@ response bound does not establish a bound on database scanning, sorting or
 latency. See the [queue design](docs/DESIGN.md#bounded-live-queue) and
 [limitations](docs/LIMITATIONS.md).
 
+The [desktop page-two capture](docs/assets/desktop-queue-page-two.png) and
+[narrow literal-search capture](docs/assets/mobile-queue-literal.png) show the
+larger synthetic queue used in the installed browser checks.
+
 ## Sign-in admission
 
 Before checking a password, the server reserves a PostgreSQL admission slot.
