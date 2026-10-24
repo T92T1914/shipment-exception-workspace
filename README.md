@@ -16,6 +16,8 @@ integration or operational users. [Executed verification](docs/VERIFICATION.md)
 records the tested revision and results. [Design](docs/DESIGN.md) explains the
 authorization and transaction boundaries.
 
+[Read in another language](https://github.com/T92T1914/T92T1914/blob/main/TRANSLATION.md).
+
 ![Manually created synthetic exception with creation, assignment and resolution history](docs/assets/desktop-intake.png)
 
 The [narrow-mobile capture](docs/assets/mobile-intake.png) shows the same intake

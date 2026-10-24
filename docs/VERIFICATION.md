@@ -144,3 +144,31 @@ WORKSPACE_FIXTURE_PYTHON plus WORKSPACE_LOGIN_FIXTURE_URL and
 WORKSPACE_QUEUE_FIXTURE_URL pointing to the dedicated synthetic consumer
 database. The queue fixture refuses to overwrite its existing fixture records.
 Never run these fixture routes against retained or operational data.
+
+## Reading-support follow-up
+
+The separately scoped October 24 reader change tested implementation
+[`9983ac011b3eceede0a4739cc7c44c292aa4dc56`](https://github.com/T92T1914/shipment-exception-workspace/commit/9983ac011b3eceede0a4739cc7c44c292aa4dc56)
+through another fresh ordinary v0.4.0 wheel, isolated environment and disposable
+consumer database. The README links the shared reading guide. Native
+`translate="no"` hints apply only to the queue reference, selected-record reference
+and reference input. Nearby prose and controls remain eligible for translation.
+
+All six manifest checks passed with unchanged before/after source samples:
+diff, package identity, installed import, dependency consistency, installed
+restart consumer and all 21 browser journeys in 34.5 seconds. Existing journeys
+now assert native `translate` booleans and exact reference/input values in both
+desktop and narrow workflows. A separate independent agent review found no
+remaining source or public-claim issue. The local backend suite was not repeated
+for this UI-only change. Exact-revision hosted CI repeats that suite separately.
+Backend, schema, record versions, retry behavior, dependency locks and existing
+screenshot bytes are unchanged. The rebuilt UI bundle includes the new hints.
+
+The reader campaign wheel SHA-256 is
+`7d4deff45fc1cae6c88583b2bb25554ed8be31d825b24dd40a297069993116bd`.
+Its repository content fingerprint remained
+`e4da58e994232942c56232d046b36afbbca75722a5592ee8d6fa1639f5c30bd1`.
+These checks establish declared browser hints and their inheritance boundaries,
+not translation-provider behavior, translation quality, maintained localization
+or personal fluency. The shared guide remains unchanged. Public README
+availability is a separate check.
