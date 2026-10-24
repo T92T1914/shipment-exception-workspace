@@ -83,7 +83,7 @@ def main():
 
     try:
         server = start()
-        with httpx.Client(base_url=base, trust_env=False) as client, httpx.Client(base_url=base, trust_env=False) as login_client:
+        with httpx.Client(base_url=base, trust_env=False) as client, httpx.Client(base_url=base, trust_env=False) as login_client, httpx.Client(base_url=base, trust_env=False) as reviewer:
             html = client.get("/")
             assert html.status_code == 200 and '/assets/' in html.text
             assert "script-src 'self'" in html.headers["content-security-policy"]
@@ -93,6 +93,7 @@ def main():
             session = client.post("/api/login", json={"email": "jules@harbor.example", "password": password},
                                   headers={"Origin": base, "X-CSRF-Token": csrf})
             assert session.status_code == 200, session.text
+            assert session.json()["user"]["role"] == "operator"
             headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"], "Idempotency-Key": str(uuid4())}
             queue_params = {"q": "HS-", "status": "all", "limit": 1}
             first_page = client.get("/api/exceptions", params=queue_params).json()
@@ -109,11 +110,37 @@ def main():
             created = client.post("/api/exceptions", json=create_body, headers=create_headers)
             assert created.status_code == 201, created.text
             created_id = created.json()["exception"]["id"]
+            reviewer_csrf = reviewer.get("/api/session").json()["csrf_token"]
+            review_session = reviewer.post("/api/login", json={"email": "taylor@harbor.example", "password": password},
+                                           headers={"Origin": base, "X-CSRF-Token": reviewer_csrf})
+            assert review_session.status_code == 200 and review_session.json()["user"]["role"] == "reviewer"
+            reviewer_headers = {"Origin": base, "X-CSRF-Token": review_session.json()["csrf_token"]}
+
+            def business_rows():
+                with psycopg.connect(database_url) as conn:
+                    return tuple(conn.execute(f"SELECT row_to_json(t)::text FROM {table} t ORDER BY 1").fetchall()
+                                 for table in ("shipment_exceptions", "exception_events", "mutation_requests"))
+
+            def review_without_writes():
+                assert reviewer.get("/api/session").json()["user"]["role"] == "reviewer"
+                own = reviewer.get(f"/api/exceptions/{created_id}")
+                assert own.status_code == 200 and own.json()["events"][0]["action"] == "created"
+                assert reviewer.get("/api/exceptions", params=queue_params).status_code == 200
+                assert reviewer.get("/api/members").status_code == 200
+                before = business_rows()
+                for target, payload in (("/api/exceptions", {**create_body, "reference": "HS-REVIEWER-DENIED"}),
+                                        (path, {"expected_version": item["version"] + 1, "assignee_id": None}),
+                                        (f"/api/exceptions/{item['id']}/resolve", {"expected_version": item["version"] + 1, "resolution": "Reviewer denied"})):
+                    response = reviewer.post(target, json=payload, headers={**reviewer_headers, "Idempotency-Key": str(uuid4())})
+                    assert response.status_code == 403 and response.json()["error"]["code"] == "read_only"
+                assert business_rows() == before
+
+            review_without_writes()
             login_csrf = login_client.get("/api/session").json()["csrf_token"]
             login_headers = {"Origin": base, "X-CSRF-Token": login_csrf}
-            # The successful sign-in above charged one admission. Charge39
+            # The two successful sign-ins charged two admissions. Charge38
             # further verifications without authenticating this separate client.
-            for index in range(39):
+            for index in range(38):
                 subject = "unknown-one@synthetic.example" if index < 20 else "unknown-two@synthetic.example"
                 denied = login_client.post("/api/login", json={"email": subject, "password": "Synthetic wrong password"}, headers=login_headers)
                 assert denied.status_code == 401, denied.text
@@ -131,6 +158,7 @@ def main():
             with psycopg.connect(database_url) as conn:
                 after_admission = conn.execute("SELECT attempts,reset_at FROM login_global").fetchall(), conn.execute("SELECT * FROM login_identifiers ORDER BY identifier_hash").fetchall()
             assert after_admission == before_admission
+            review_without_writes()
             second_page = client.get("/api/exceptions", params={**queue_params, "cursor": first_page["next_cursor"]}).json()
             assert len(second_page["items"]) == 1 and second_page["items"][0]["reference"] == "HS-2073"
             assert second_page["next_cursor"]
@@ -164,8 +192,9 @@ def main():
              "one_creation_event_after_restart_retry": True, "login_budget_survived_restart": True,
              "correct_password_throttled_at_global_limit": True,
              "admission_fixture_expired_before_browser_campaign": True,
-             "queue_cursor_survived_restart": True, "bounded_queue_traversal": True}, indent=2), encoding="utf-8")
-        print("Installed wheel, UI, API restart, durable retry, login admission and queue pages accepted.")
+             "queue_cursor_survived_restart": True, "bounded_queue_traversal": True,
+             "reviewer_read_and_business_write_denial_survived_restart": True}, indent=2), encoding="utf-8")
+        print("Installed wheel, UI, API restart, durable retry, admission, queue pages and reviewer access accepted.")
         if args.keep_server:
             server = None
     finally:

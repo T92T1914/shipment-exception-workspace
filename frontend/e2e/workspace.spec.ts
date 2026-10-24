@@ -45,7 +45,7 @@ async function assertNoHorizontalOverflow(page: Page) {
   expect(dimensions.content, 'Content fits the viewport without horizontal scrolling').toBeLessThanOrEqual(dimensions.viewport);
 }
 
-async function login(page: Page, organization: 'northline' | 'harbor' = 'northline') {
+async function login(page: Page, organization: 'northline' | 'harbor' = 'northline', role: 'operator' | 'reviewer' = 'operator') {
   await page.goto('/');
   const email = page.getByLabel('Email address');
   await expect(email).toBeVisible();
@@ -53,11 +53,14 @@ async function login(page: Page, organization: 'northline' | 'harbor' = 'northli
   await expect(email).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
-  await email.fill(organization === 'northline' ? 'alex@northline.example' : 'jules@harbor.example');
+  await email.fill(role === 'reviewer'
+    ? organization === 'northline' ? 'casey@northline.example' : 'taylor@harbor.example'
+    : organization === 'northline' ? 'alex@northline.example' : 'jules@harbor.example');
   await page.getByLabel('Password', { exact: true }).fill(demoPassword!);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Shipment exceptions', exact: true })).toBeVisible();
   await expect(page.locator('.identity')).toContainText(organization === 'northline' ? 'Northline Logistics' : 'Harbor Supply');
+  await expect(page.locator('.identity .access-role')).toHaveText(role === 'operator' ? 'Operator' : 'Read-only reviewer');
   const seededReferences = organization === 'northline' ? ['NL-1042', 'NL-1086', 'NL-1091'] : ['HS-2057', 'HS-2073'];
   for (const reference of seededReferences) {
     const row = page.getByRole('button', { name: new RegExp(reference) });
@@ -1099,6 +1102,181 @@ test('later-page creation resets browsing, survives its off-page bookmark and cl
     assertBrowser();
   } finally {
     releaseOld();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
+function roleFixture(command: 'demote-alex' | 'promote-alex') {
+  const python = process.env.WORKSPACE_FIXTURE_PYTHON;
+  if (!python || !process.env.WORKSPACE_ROLE_FIXTURE_URL) {
+    throw new Error('The scoped role fixture environment must be set explicitly.');
+  }
+  const result = spawnSync(python, ['../tools/browser_role_fixture.py', command], {
+    cwd: process.cwd(), env: process.env, encoding: 'utf8', windowsHide: true,
+    timeout: 10_000, maxBuffer: 64 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`Role fixture ${command} failed (exit ${result.status ?? 'unavailable'}).`);
+  }
+  let acknowledgement;
+  try { acknowledgement = JSON.parse(result.stdout.trim()); }
+  catch { throw new Error('Role fixture did not return a valid acknowledgement.'); }
+  if (acknowledgement?.command !== command || acknowledgement?.ok !== true ||
+      acknowledgement?.role !== (command === 'demote-alex' ? 'reviewer' : 'operator')) {
+    throw new Error('Role fixture did not confirm the requested synthetic actor role.');
+  }
+}
+
+async function refreshWorkspaceAccess(page: Page, role: 'operator' | 'reviewer') {
+  const sessionResponse = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/session');
+  await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+  const response = await sessionResponse;
+  expect(response.status()).toBe(200);
+  expect((await response.json()).user.role).toBe(role);
+  await expect(page.locator('.identity .access-role')).toHaveText(role === 'operator' ? 'Operator' : 'Read-only reviewer');
+  await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+}
+
+for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 'narrow', width: 390, height: 844 }]) {
+  test(`${viewport.name} reviewer reads history and bounded queue pages without business mutation controls`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const assertBrowser = observeBrowser(page);
+    let businessPosts = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+    });
+    await login(page, 'northline', 'reviewer');
+    await expect(page.getByRole('region', { name: 'Read-only access', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New exception', exact: true })).toHaveCount(0);
+    const detail = await openRecord(page, 'NL-1042');
+    await expect(detail.locator('.history-list li')).toHaveCount(2);
+    await expect(detail.locator('.resolution-text')).toBeVisible();
+    await expect(page.getByLabel('Assigned to', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Resolution note', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save assignment', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Confirm resolution', exact: true })).toHaveCount(0);
+    await assertNoHorizontalOverflow(page);
+    await screenshot(page, `${viewport.name}-reviewer.png`);
+    if (viewport.name === 'narrow') await page.getByRole('button', { name: 'Back to exceptions', exact: true }).click();
+    await searchQueue(page, 'Queue browse', 20);
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    await expectQueuePage(page, 2, 20);
+    await page.getByRole('button', { name: 'Previous page', exact: true }).click();
+    await expectQueuePage(page, 1, 20);
+    await page.getByLabel('Show exceptions', { exact: true }).selectOption('resolved');
+    const queue = await expectQueuePage(page, 1);
+    await expect(queue.locator('.exception-row')).not.toHaveCount(0);
+    await expect(queue.locator('.status-open')).toHaveCount(0);
+    await page.evaluate(() => { window.location.hash = 'new'; });
+    await expect(page.getByRole('form', { name: 'New exception', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'New shipment exception', exact: true })).toHaveCount(0);
+    await expect.poll(() => new URL(page.url()).hash).toBe('');
+    await expect(page.getByRole('heading', { name: 'Your organization', exact: true })).toBeVisible();
+    await refreshWorkspaceAccess(page, 'reviewer');
+    await assertNoHorizontalOverflow(page);
+    expect(businessPosts).toBe(0);
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+    expect(businessPosts).toBe(0);
+    assertBrowser();
+  });
+}
+
+test('a stale operator is denied after demotion and explicit refresh reloads current access', async ({ page }) => {
+  roleFixture('promote-alex');
+  const assertBrowser = observeBrowser(page, { expectedStatus: 403 });
+  try {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await login(page);
+    await searchQueue(page, 'NL-Q-001', 1);
+    const detail = await openRecord(page, 'NL-Q-001');
+    const id = new URL(page.url()).hash.split('/')[1];
+    const beforeResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(beforeResponse.status()).toBe(200);
+    const before = await beforeResponse.json();
+    let businessPosts = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+    });
+    roleFixture('demote-alex');
+    // The stale page still offers a write, but the real API must refuse it.
+    await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+    const denied = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/assign'));
+    await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+    expect((await denied).status()).toBe(403);
+    await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+    await expect(page.getByRole('alert')).toContainText('This attempt was denied');
+    await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Assigned to', { exact: true })).toHaveCount(0);
+    const afterResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(afterResponse.status()).toBe(200);
+    expect(await afterResponse.json()).toEqual(before);
+    expect(businessPosts).toBe(1);
+    await refreshWorkspaceAccess(page, 'reviewer');
+    await expect(detail.locator('.record-meta')).toContainText(`Version ${before.exception.version}`);
+    roleFixture('promote-alex');
+    await refreshWorkspaceAccess(page, 'operator');
+    await expect(page.getByLabel('Assigned to', { exact: true })).toBeVisible();
+    roleFixture('demote-alex');
+    await refreshWorkspaceAccess(page, 'reviewer');
+    await expect(page.getByRole('button', { name: 'New exception', exact: true })).toHaveCount(0);
+    expect(businessPosts).toBe(1);
+    assertBrowser();
+  } finally { roleFixture('promote-alex'); }
+});
+
+test('a denied replay after an interrupted commit preserves honest read-only recovery', async ({ page }) => {
+  roleFixture('promote-alex');
+  const assertBrowser = observeBrowser(page, { expectedStatus: 403, expectedFailedRequest: /\/api\/exceptions\/[^/]+\/assign$/ });
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    await searchQueue(page, 'NL-Q-002', 1);
+    const detail = await openRecord(page, 'NL-Q-002');
+    const id = new URL(page.url()).hash.split('/')[1];
+    const attempts: { key: string | undefined; body: string | null }[] = [];
+    let committedStatus: number | undefined;
+    await page.route(`**/api/exceptions/${id}/assign`, async route => {
+      const request = route.request();
+      attempts.push({ key: request.headers()['idempotency-key'], body: request.postData() });
+      if (attempts.length === 1) {
+        const committed = await route.fetch();
+        committedStatus = committed.status();
+        await route.abort('failed');
+      } else { await route.continue(); }
+    });
+    await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+    await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeVisible();
+    expect(committedStatus).toBe(200);
+    const committedResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(committedResponse.status()).toBe(200);
+    const committed = await committedResponse.json();
+    expect(committed.exception.version).toBe(2);
+    expect(committed.events).toHaveLength(1);
+    roleFixture('demote-alex');
+    const denied = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/assign'));
+    await page.getByRole('button', { name: 'Retry same change', exact: true }).click();
+    expect((await denied).status()).toBe(403);
+    await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+    await expect(page.getByRole('alert')).toContainText('An earlier interrupted request may already be saved.');
+    await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].key).toBeTruthy();
+    expect(attempts[1]).toEqual(attempts[0]);
+    const afterResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(afterResponse.status()).toBe(200);
+    expect(await afterResponse.json()).toEqual(committed);
+    await refreshWorkspaceAccess(page, 'reviewer');
+    await expect(detail.locator('.record-meta')).toContainText('Version 2');
+    await expect(detail.locator('.history-list li')).toHaveCount(1);
+    await expect(detail.locator('.action-card')).toContainText(['Current owner: Sam Rivera', 'Only operators can record a resolution.']);
+    await expect(page.getByLabel('Assigned to', { exact: true })).toHaveCount(0);
+    await assertNoHorizontalOverflow(page);
+    expect(attempts).toHaveLength(2);
+    assertBrowser();
+  } finally {
+    roleFixture('promote-alex');
     await page.unrouteAll({ behavior: 'wait' });
   }
 });

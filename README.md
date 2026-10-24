@@ -7,8 +7,8 @@ PostgreSQL stores the workflow, audit history, sessions and retry receipts.
 
 The useful part is what happens when a change goes wrong. An older browser tab
 cannot overwrite a newer edit. If a request commits but its response is lost,
-retrying the same change returns the saved result without creating a second
-exception or event. The exception, audit event and saved response share one
+an authorized retry of the same change returns the saved result without creating
+a second exception or event. The exception, audit event and saved response share one
 database transaction.
 
 This is a local engineering demonstration with synthetic data. It has no carrier
@@ -29,8 +29,9 @@ workflow on a 390-pixel-wide viewport. The earlier v0.1.0 captures remain in
 1. Sign in to one of the two synthetic organizations.
 2. Search shipment references and summaries, filter by status, and use
    **Next page** and **Previous page** to browse the matching queue.
-3. Choose **New exception** and enter a shipment reference, summary, details and
-   priority. Saving opens the new record with its creation event at version 1.
+3. As an operator, choose **New exception** and enter a shipment reference,
+   summary, details and priority. Saving opens the new record with its creation
+   event at version 1.
 4. Assign it to a member of the same organization, then resolve it with a short
    explanation. The detail view retains the version and
    audit history after a reload.
@@ -38,8 +39,39 @@ workflow on a 390-pixel-wide viewport. The earlier v0.1.0 captures remain in
    response is interrupted, use **Retry same change** while that page remains open.
 
 The desktop view shows the queue beside the selected record. Narrow screens
-switch between the queue and detail view. All members within an organization
-have the same permissions.
+switch between the queue and detail view. Operators can change the workflow.
+Read-only reviewers can search the queue and inspect records and their history.
+
+## Operator and reviewer access
+
+The account's current database role determines what it can do. Sign-in and
+session responses include that role, and **Refresh workspace** refreshes access
+as well as records. The cookie does not carry a trusted client-selected role.
+
+| Action within the account's organization | Operator | Reviewer |
+| --- | --- | --- |
+| Sign in and sign out | Yes | Yes |
+| Browse/search the queue, inspect details/history and list members | Yes | Yes |
+| Create, assign, unassign or resolve an exception | Yes | No |
+| Replay a saved mutation response | Yes | No |
+| Be selected as an assignee | Yes | Yes |
+
+Roles restrict the actor, not who may receive an assignment. Operators can
+assign any member of the same organization, including a reviewer. Both roles
+retain the organization boundary. There is no role-administration interface.
+
+For valid mutation requests with the required CSRF token and retry key, the
+server checks current operator access inside the write transaction before
+reserving or reading a receipt. A reviewer receives HTTP 403 `read_only`, with
+no exception, event or receipt change from that attempt. Hiding buttons is only
+a UI affordance; the server enforces this rule independently.
+
+An operator tab can become stale after its database role changes. On an explicit
+`read_only` response, the UI retires its local pending change and shows read-only
+access. That denial does not prove an earlier interrupted attempt failed: it may
+already have committed. Refresh the workspace and inspect saved records before
+new work. Permission refresh performs no automatic mutation retry. Ordinary
+uncertain operator requests still retain their original key and body.
 
 New reference, summary and details inputs lose outer whitespace. A reference is
 unique within its organization and remains case-sensitive: `NL-2000` and
@@ -126,7 +158,7 @@ The helper creates its own loopback cluster and two new databases. It does not
 start or alter an installed PostgreSQL service.
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local'
+$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v050'
 py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
@@ -139,7 +171,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.4.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.5.0-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -157,14 +189,15 @@ Open `http://127.0.0.1:8765` in your own browser. The generated demo password is
 in `demo-password.txt` under the private state directory. Each newly seeded
 account uses that password:
 
-| Organization | Accounts |
-| --- | --- |
-| Northline Logistics | `alex@northline.example`, `sam@northline.example` |
-| Harbor Supply | `jules@harbor.example`, `robin@harbor.example` |
+| Organization | Operators | Read-only reviewer |
+| --- | --- | --- |
+| Northline Logistics | `alex@northline.example`, `sam@northline.example` | `casey@northline.example` |
+| Harbor Supply | `jules@harbor.example`, `robin@harbor.example` | `taylor@harbor.example` |
 
 The names, email addresses and shipment records are synthetic. The password
 must contain at least 12 characters. Repeating `seed` preserves existing
-passwords and workflow state. It is not a password reset command.
+passwords, roles and workflow state. It is not a password reset or role-management
+command.
 
 Stop the application with Ctrl+C. From the checkout, stop only the helper's
 owned database cluster with:
@@ -190,7 +223,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.4.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.5.0-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -205,28 +238,30 @@ origin as the API, so the installed application needs no Vite development server
 
 ## Use an existing database
 
-Version 0.4.0 keeps schema version 3. A v0.3.0 database needs no migration. This
-release adds no queue index. Stop every application process using the dedicated
-database before changing its installed environment. If it still uses schema 1 or 2,
-make a private backup with your PostgreSQL backup tooling before migration. Keep
+Version 0.5.0 requires schema version 4. An existing schema 1, 2 or 3 database
+needs the explicit migration below. Stop every application process using the
+dedicated database before changing its installed environment, and make a private
+backup with your PostgreSQL backup tooling before migration. Keep
 the backup, connection record and existing credentials outside Git. The migration
 command does not make a backup, and this release does not qualify a
 backup-restoration or downgrade procedure.
 
-Build the v0.4.0 wheel as above, then install it into a new environment. Load
-`SHIPMENT_DATABASE_URL` from the retained connection record for the existing
+Build the v0.5.0 wheel as above, then install it into a new environment. Here,
+`$state` names the existing private state directory, not the fresh-start example.
+Load `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v040'
+$upgradeEnv = Join-Path $state 'consumer-env-v050'
+if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.4.0-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.5.0-py3-none-any.whl
 ```
 
-For schema 1 or 2, run the explicit migration before serving. Skip this step for
-an existing schema 3 database.
+For schema 1, 2 or 3, run the explicit migration before serving. An existing
+schema 4 database needs no further migration.
 
 ```powershell
 & $upgradePython -m shipment_workspace.cli migrate
@@ -239,19 +274,23 @@ Start the new installed environment against the retained connection record:
 & $upgradePython -m shipment_workspace.cli serve
 ```
 
-The command upgrades schema 1 or 2 to schema 3 in one transaction, applying the
-earlier audit-constraint upgrade when needed and adding admission state. It
-preserves existing records, password hashes, sessions, audit events and retry
+The command upgrades schema 1, 2 or 3 to schema 4 in one transaction, applying
+earlier audit/admission changes when needed and adding the role column. Existing
+users retain operator access. A future user inserted without an explicit role
+defaults to reviewer. The migration preserves existing records, password hashes,
+sessions, audit events and retry
 receipts, including their original fingerprint bytes. Repeating `migrate` on
-schema 3 makes no further change. An unsupported version is refused. `init`,
+schema 4 makes no further change. An unsupported version is refused. `init`,
 `seed` and `serve` require the current schema and do not silently upgrade an old
 database. Upgrade tests use disposable fixtures, rather than modifying a
 previously accepted local consumer database.
 
-Do not run `seed` as an upgrade step. Neither migration nor seeding invents
+Migration preserves the existing user population rather than adding the two
+fresh-demo reviewer accounts. Do not run `seed` as an upgrade step.
+Neither migration nor seeding invents
 creation history for existing records. New manually entered exceptions receive
 a creation event, while older seeded records keep their actual saved history.
-For a POSIX installation using schema 1 or 2, invoke
+For a POSIX installation using schema 1, 2 or 3, invoke
 `bin/shipment-workspace migrate` from the newly installed environment before
 starting its server. The accepted older consumer environments and databases do
 not need to be changed to verify a new release.
@@ -269,7 +308,8 @@ $env:SHIPMENT_TEST_DATABASE_URL = $db.test_url
 & $consumerPython -m pytest tests
 ```
 
-The suite includes organization isolation, session and CSRF rejection, stale
+The suite includes operator/reviewer access, role-change ordering, denied receipt
+replay, organization isolation, session and CSRF rejection, stale
 versions, creation and reference races, conflicting retry keys, rollback and
 schema-upgrade preservation. Installed consumer and headless acceptance exercise
 the built application outside the checkout, including desktop, narrow mobile,
@@ -287,6 +327,13 @@ used by the fixture helper. Admission browser scenarios separately use
 `WORKSPACE_LOGIN_FIXTURE_URL`. These connection URLs contain credentials and
 belong outside Git and public logs.
 
+Reviewer browser scenarios also require `WORKSPACE_ROLE_FIXTURE_URL` pointing
+to that same dedicated synthetic consumer. Its helper checks schema 4 and the
+exact six-account identity/organization set, then changes only Alex's role for
+the demotion/promotion cases. It resets no domain records, sessions, history or
+receipts and supplies no HTTP endpoint. The guard is not permission to use it
+against a retained accepted consumer or other data.
+
 The queue fixture inserts 54 Northline and four Harbor records and refuses a
 database already containing its reference prefixes. It adds no invented audit
 events. This is test setup that changes its target database, not a recovery or
@@ -297,7 +344,7 @@ it is not a load test or performance measurement.
 ## Boundaries and licenses
 
 This version supports one small local workflow. It has no registration,
-password recovery, permission roles, reopen action or production
+password recovery, role administration, reopen action or production
 deployment route. The audit history is an application record, not a tamper-proof
 compliance log. [Limitations](docs/LIMITATIONS.md) and [security notes](SECURITY.md)
 describe the remaining boundaries.

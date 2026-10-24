@@ -7,11 +7,15 @@ practice or suitability for sensitive logistics data.
 
 ## Product scope
 
-- Two organizations and four accounts are seeded explicitly. There is no signup,
+- Two organizations and six accounts are seeded explicitly: four operators and
+  two read-only reviewers. There is no signup,
   invitation flow, account administration, password recovery or password change UI.
-- All members within an organization have the same permissions. There are no
-  owner, dispatcher or administrator roles.
-- Members can create, assign, unassign and resolve exceptions. Intake is manual
+- Both roles can inspect their organization's queue, details, history and
+  members. Only operators can create, assign, unassign, resolve or replay a
+  mutation receipt. Roles restrict the actor, not assignment eligibility: any
+  member of the same organization can be an assignee. There is no interface for
+  role administration, general permission engine or owner/administrator role.
+- Operators can create, assign, unassign and resolve exceptions. Intake is manual
   and intended for synthetic records. Resolved records cannot be reopened or
   edited, and reference, summary, details and priority cannot be edited after
   creation.
@@ -39,6 +43,11 @@ practice or suitability for sensitive logistics data.
   exists, but the UI has no receipt browser or cross-device recovery flow. A
   replayed creation response reflects version 1, even if current state has since
   advanced. It must not be treated as the latest record.
+- An explicit HTTP 403 `read_only` retires the tab's pending mutation intent and
+  allows current-state inspection. A prior interrupted request may already have
+  committed, so the later denial does not establish its outcome. Permission
+  refresh does not automatically retry a POST. There is no automatic role-change
+  push, cross-device recovery or receipt browser.
 
 ## Security and operations
 
@@ -61,15 +70,21 @@ practice or suitability for sensitive logistics data.
 - Authorization is enforced in the application and supported by relational
   constraints. PostgreSQL row-level security is not configured. A database
   administrator can read or alter application data.
+- Mutations lock and check the current actor row with `FOR SHARE` before receipt
+  access and business writes. Ordinary role updates serialize with that lock.
+  A mutation admitted before a role update can finish first. This does not cancel
+  committed work, provide instant revocation or protect against privileged
+  database changes. UI controls can remain stale until access refresh or an
+  explicit server denial.
 - Audit events are ordinary database rows. They are not cryptographically sealed
   or protected from a privileged database operator.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.4.0 retains schema 3, so an existing v0.3.0 database needs no new
-  migration. The explicit transactional upgrade from schema 1 or 2 to 3 remains
-  available. Stop application processes and back up the dedicated database before
-  that upgrade. There is
+- Version 0.5.0 requires schema 4. The explicit transactional upgrade from schema
+  1, 2 or 3 preserves existing users as operators and gives future omitted roles
+  a reviewer default. Stop application processes and privately back up the
+  dedicated database before that upgrade. There is
   no downgrade, general migration framework or automatic startup upgrade. Older
   seeded records retain their original history without fabricated creation events.
   Backup restoration, disaster recovery and high availability remain outside the
@@ -100,6 +115,13 @@ and requires an explicit `WORKSPACE_QUEUE_FIXTURE_URL`. Browser checks use
 setup changes its database, so its target must be a fresh disposable consumer,
 never a retained accepted consumer or another project. The fixture is not a
 recovery tool, scale trial or performance measurement.
+
+The role browser fixture requires `WORKSPACE_ROLE_FIXTURE_URL`, schema 4 and the
+exact six synthetic account IDs, organizations and emails. It changes only
+Alex's role for the declared demotion/promotion scenarios, without resetting
+domain records, sessions, history or receipts. These guards do not authorize
+using it against a retained accepted consumer or operational state. It is test
+setup, not an application endpoint or role-management feature.
 
 Admission tests may set counter expiries or substitute a test clock inside a
 disposable database scenario. Those checks exercise declared boundaries without

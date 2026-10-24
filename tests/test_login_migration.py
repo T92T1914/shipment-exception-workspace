@@ -134,9 +134,11 @@ def v2_database(database_url):
 
 def assert_retained_v2_rows(before, after):
     assert before["rows"]["schema_version"] == [{"singleton": True, "version": 2}]
-    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 3}]
+    assert after["rows"]["schema_version"] == [{"singleton": True, "version": 4}]
     for name, rows in before["rows"].items():
-        if name != "schema_version":
+        if name == "users":
+            assert after["rows"][name] == [{**row, "role": "operator"} for row in rows]
+        elif name != "schema_version":
             assert after["rows"][name] == rows, name
     assert after["rows"]["login_identifiers"] == []
     assert len(after["rows"]["login_global"]) == 1
@@ -187,7 +189,7 @@ def test_v2_requires_explicit_upgrade_before_initialization_or_app_start(v2_data
     database, _ = v2_database
     before = database_snapshot(database)
     for operation in (initialize, require_current_schema):
-        with pytest.raises(RuntimeError, match="[Mm]igrat|version 3"):
+        with pytest.raises(RuntimeError, match="[Mm]igrat|version 4"):
             operation(database)
         assert database_snapshot(database) == before
     with pytest.raises(RuntimeError):

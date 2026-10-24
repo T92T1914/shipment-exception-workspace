@@ -19,12 +19,12 @@ def main():
     database_url = os.environ.get("WORKSPACE_LOGIN_FIXTURE_URL")
     if not database_url:
         parser.error("Set WORKSPACE_LOGIN_FIXTURE_URL to the disposable browser database")
-    expected = {"alex@northline.example", "sam@northline.example", "jules@harbor.example", "robin@harbor.example"}
+    expected = {"alex@northline.example", "sam@northline.example", "casey@northline.example", "jules@harbor.example", "robin@harbor.example", "taylor@harbor.example"}
     identifier = sha256(b"alex@northline.example").hexdigest()
     with connect(database_url) as conn, conn.transaction():
         version = conn.execute("SELECT version FROM schema_version").fetchall()
         accounts = {row["email"] for row in conn.execute("SELECT email FROM users").fetchall()}
-        if version != [{"version": 3}] or accounts != expected:
+        if version != [{"version": 4}] or accounts != expected:
             raise RuntimeError("Browser admission fixture requires the exact synthetic schema/account set")
         if not conn.execute("SELECT singleton FROM login_global WHERE singleton=true FOR UPDATE").fetchone():
             raise RuntimeError("Browser admission fixture requires initialized global state")

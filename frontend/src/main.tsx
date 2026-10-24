@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
-type User = { id: string; name: string; email: string; organization_id: string; organization_name: string };
+type User = { id: string; name: string; email: string; organization_id: string; organization_name: string; role: 'operator' | 'reviewer' };
 type Session = { authenticated: boolean; csrf_token: string; user?: User };
 type ShipmentException = {
   id: string; reference: string; summary: string; details: string;
@@ -142,14 +142,19 @@ function App() {
   const pendingRef = useRef<PendingChange | null>(null);
   const mutationLock = useRef(false);
   const activeUser = useRef<string | null>(null);
+  const activeRole = useRef<string | undefined>(undefined);
+  const accessRequest = useRef(0);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
   const queueRef = useRef(queue);
   const queueBusy = useRef(false);
   activeUser.current = session?.user?.id ?? null;
+  activeRole.current = session?.user?.role;
+  const canMutate = session?.user?.role === 'operator';
 
   const clearPrivateState = useCallback(() => {
-    listRequest.current++; detailRequest.current++;
+    listRequest.current++; detailRequest.current++; accessRequest.current++;
+    activeRole.current = undefined;
     setItems([]); setMembers([]); setDetail(null); setResolution('');
     const reset = firstQueuePage();
     queueRef.current = reset; setQueue(reset); setSearchDraft('');
@@ -158,6 +163,19 @@ function App() {
     setCreating(false); setCreateFields({ ...emptyCreateFields });
     setPending(null); pendingRef.current = null;
   }, []);
+
+  const refreshAccess = useCallback(async (user: string | null) => {
+    const generation = ++accessRequest.current;
+    const result = await request<Session>('/api/session');
+    if (generation !== accessRequest.current || user !== activeUser.current) return null;
+    if (!result.authenticated || !result.user || result.user.id !== user) {
+      clearPrivateState(); setSession(result); window.location.hash = '';
+      return null;
+    }
+    activeRole.current = result.user.role;
+    setSession(result);
+    return result;
+  }, [clearPrivateState]);
 
   const beginQueue = useCallback((view: QueueRequest) => {
     // Invalidate synchronously: an older response can arrive before React has
@@ -245,12 +263,19 @@ function App() {
     const onHash = () => {
       setSelectedId(selectedFromHash());
       setCreating(window.location.hash === '#new');
-      if (!pendingRef.current) setError('');
+      if (!pendingRef.current && activeRole.current === 'operator') setError('');
       setNotice(''); setConflict(false);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  useEffect(() => {
+    if (session?.authenticated && !canMutate && creating) {
+      setCreating(false); setCreateFields({ ...emptyCreateFields });
+      if (window.location.hash === '#new') window.location.hash = '';
+    }
+  }, [session?.authenticated, canMutate, creating]);
 
   useEffect(() => {
     if (!session?.authenticated) return;
@@ -312,15 +337,17 @@ function App() {
     if (busy || pendingRef.current) return;
     setBusy(true); setError('');
     const user = activeUser.current;
-    const view = beginQueue(firstQueuePage(queueRef.current.status, queueRef.current.q));
+    let view: QueueRequest | undefined;
     try {
+      if (!await refreshAccess(user)) return;
+      view = beginQueue(firstQueuePage(queueRef.current.status, queueRef.current.q));
       await loadLists(view);
       if (user !== activeUser.current) return;
       if (selectedId) await loadDetail(selectedId);
       if (user === activeUser.current) {
         setConflict(false); setNotice('Showing the first queue page and the latest saved record. Review it before making another change.');
       }
-    } catch (failure) { if (user === activeUser.current && view === queueRef.current) await handleError(failure); }
+    } catch (failure) { if (user === activeUser.current && (!view || view === queueRef.current)) await handleError(failure); }
     finally { setBusy(false); }
   }
 
@@ -365,7 +392,7 @@ function App() {
   }
 
   async function sendChange(intent: ChangeIntent | PendingChange) {
-    if (!session || mutationLock.current) return;
+    if (!session || activeRole.current !== 'operator' || mutationLock.current) return;
     mutationLock.current = true;
     setBusy(true); setError(''); setNotice(''); setConflict(false);
     const user = activeUser.current;
@@ -414,7 +441,16 @@ function App() {
         setError('The response was interrupted. The change may already be saved. Retry the same change to retrieve its result.');
       } else {
         pendingRef.current = null; setPending(null);
-        if (failure instanceof ApiError && failure.code === 'version_conflict') {
+        if (failure instanceof ApiError && failure.status === 403 && failure.code === 'read_only') {
+          // A denied replay says nothing about an earlier interrupted commit.
+          // Retire this tab's intent and review current records before new work.
+          activeRole.current = 'reviewer';
+          setSession(value => !value?.user || value.user.id !== user ? value : { ...value, user: { ...value.user, role: 'reviewer' } });
+          setCreating(false); setCreateFields({ ...emptyCreateFields });
+          if (window.location.hash === '#new') window.location.hash = '';
+          setError('This attempt was denied because your current access is read-only. An earlier interrupted request may already be saved. Refresh the workspace to review saved records.');
+          try { await refreshAccess(user); } catch { /* Remain read-only until an explicit access refresh succeeds. */ }
+        } else if (failure instanceof ApiError && failure.code === 'version_conflict') {
           setConflict(true); setError('Someone changed this exception while you were working. Refresh the record and review the latest version.');
         } else if (failure instanceof ApiError && failure.code === 'reference_conflict') {
           setError('That reference is already used in your organization. Change the reference and submit the corrected exception.');
@@ -440,7 +476,7 @@ function App() {
   }
 
   function startCreate() {
-    if (busy || pendingRef.current) return;
+    if (activeRole.current !== 'operator' || busy || pendingRef.current) return;
     setCreateFields({ ...emptyCreateFields }); setError(''); setNotice('');
     setCreating(true); setSelectedId(null);
     window.location.hash = 'new';
@@ -448,7 +484,7 @@ function App() {
 
   function createException(event: React.FormEvent) {
     event.preventDefault();
-    if (window.location.hash !== '#new' || busy || pendingRef.current) return;
+    if (activeRole.current !== 'operator' || window.location.hash !== '#new' || busy || pendingRef.current) return;
     const body = { reference: createFields.reference.trim(), summary: createFields.summary.trim(),
       details: createFields.details.trim(), priority: createFields.priority };
     if (!body.reference || !body.summary || !body.details) {
@@ -458,7 +494,7 @@ function App() {
     void sendChange({ action: 'create', body });
   }
 
-  const locked = busy || !!pending || conflict;
+  const locked = busy || !!pending || conflict || !canMutate;
   const current = detail?.exception;
   const events = detail?.events ?? [];
   const loginBlocked = loginWait !== null && loginWait.seconds > 0;
@@ -468,7 +504,7 @@ function App() {
     <div className="demo-banner"><span className="demo-dot" aria-hidden="true" /> Synthetic workspace <span className="demo-separator">/</span> Fictional organizations and shipment records</div>
     <header className="app-header">
       <div className="brand"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><div><p className="eyebrow">Shipment operations</p><p className="brand-title">Exception workspace</p></div></div>
-      {session?.authenticated && session.user && <div className="identity"><div><strong>{session.user.organization_name}</strong><span>{session.user.name}</span></div><button className="button subtle" onClick={() => void signOut()} disabled={busy || !!pending}>Sign out</button></div>}
+      {session?.authenticated && session.user && <div className="identity"><div><strong>{session.user.organization_name}</strong><span>{session.user.name}</span><span className="access-role">{canMutate ? 'Operator' : 'Read-only reviewer'}</span></div><button className="button subtle" onClick={() => void signOut()} disabled={busy || !!pending}>Sign out</button></div>}
     </header>
 
     {!session?.authenticated ? <main className="login-layout">
@@ -482,12 +518,13 @@ function App() {
           <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={busy} />
           <button className="button primary full-width" type="submit" disabled={busy || loginBlocked} aria-describedby={loginWait ? 'login-wait' : undefined}>{busy ? 'Signing in...' : 'Sign in'}</button>
         </form>}
-        <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Northline: alex@northline.example</span><span>Harbor: jules@harbor.example</span><p>Each organization sees its own records.</p></div>
+        <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Operators: alex@northline.example, jules@harbor.example</span><span>Reviewers: casey@northline.example, taylor@harbor.example</span><p>Each organization sees its own records.</p></div>
       </section>
     </main> : <main className={`workspace ${selectedId || creating ? 'has-selection' : ''}`}>
-      <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><div className="workspace-controls"><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button><button className="button primary" disabled={busy || !!pending || creating} onClick={startCreate}>New exception</button></div></section>
+      <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><div className="workspace-controls"><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button>{canMutate && <button className="button primary" disabled={busy || !!pending || creating} onClick={startCreate}>New exception</button>}</div></section>
+      {!canMutate && <section className="access-notice" aria-label="Read-only access"><h2>Read-only access</h2><p>You can browse your organization's exceptions and change history. Creating, assigning and resolving exceptions requires an operator.</p></section>}
       <div className="workspace-messages">
-        {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
+        {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy || !canMutate}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
       </div>
       <div className="work-columns">
@@ -507,7 +544,7 @@ function App() {
 
         <section className="detail-panel" aria-label="Exception detail">
           {selectedId && !creating && <button className="mobile-back button subtle" onClick={() => { window.location.hash = ''; }} disabled={busy || !!pending}>Back to exceptions</button>}
-          {creating ? <section className="intake" aria-labelledby="intake-title">
+          {creating && canMutate ? <section className="intake" aria-labelledby="intake-title">
             <p className="eyebrow">Manual intake</p><h2 id="intake-title">New shipment exception</h2>
             <p className="muted">Record an exception for {session.user?.organization_name}. It starts open and unassigned.</p>
             <form onSubmit={createException} aria-label="New exception">
@@ -523,8 +560,8 @@ function App() {
             <div className="detail-heading"><div><p className="reference" translate="no">{current.reference}</p><h2>{current.summary}</h2></div><Status item={current} /></div>
             <div className="record-meta"><span>Version {current.version}</span><span>Updated {dateLabel(current.updated_at)}</span><span className={`priority priority-${current.priority}`}>{current.priority === 'high' ? 'High priority' : 'Normal priority'}</span></div>
             <div className="detail-description"><h3>What needs attention</h3><p>{current.details}</p></div>
-            <div className="action-grid"><section className="action-card" aria-labelledby="assignment-title"><p className="eyebrow">Ownership</p><h3 id="assignment-title">Assign a teammate</h3><p className="muted">Current owner: <strong>{current.assignee_name ?? 'Unassigned'}</strong></p><form onSubmit={assign}><label htmlFor="assignee">Assigned to</label><select id="assignee" value={assignment} onChange={event => setAssignment(event.target.value)} disabled={locked || current.status === 'resolved'}><option value="">Unassigned</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select><button className="button secondary" type="submit" disabled={locked || current.status === 'resolved' || assignment === (current.assignee_id ?? '')}>Save assignment</button></form></section>
-              <section className="action-card" aria-labelledby="resolution-title"><p className="eyebrow">Outcome</p><h3 id="resolution-title">{current.status === 'resolved' ? 'Resolution recorded' : 'Resolve exception'}</h3>{current.status === 'resolved' ? <><p className="resolution-text">{current.resolution}</p><p className="muted small-print">This record is resolved. Its history remains available below.</p></> : <form onSubmit={resolve}><label htmlFor="resolution">Resolution note</label><textarea id="resolution" rows={4} placeholder="Describe what changed and the next handoff." value={resolution} onChange={event => setResolution(event.target.value)} maxLength={2000} required disabled={locked} /><span className="character-count">{resolution.length} / 2000</span><button className="button primary" type="submit" disabled={locked || !resolution.trim()}>Confirm resolution</button></form>}</section>
+            <div className="action-grid"><section className="action-card" aria-labelledby="assignment-title"><p className="eyebrow">Ownership</p><h3 id="assignment-title">{canMutate ? 'Assign a teammate' : 'Current ownership'}</h3><p className="muted">Current owner: <strong>{current.assignee_name ?? 'Unassigned'}</strong></p>{canMutate && <form onSubmit={assign}><label htmlFor="assignee">Assigned to</label><select id="assignee" value={assignment} onChange={event => setAssignment(event.target.value)} disabled={locked || current.status === 'resolved'}><option value="">Unassigned</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select><button className="button secondary" type="submit" disabled={locked || current.status === 'resolved' || assignment === (current.assignee_id ?? '')}>Save assignment</button></form>}</section>
+              <section className="action-card" aria-labelledby="resolution-title"><p className="eyebrow">Outcome</p><h3 id="resolution-title">{current.status === 'resolved' ? 'Resolution recorded' : canMutate ? 'Resolve exception' : 'Resolution'}</h3>{current.status === 'resolved' ? <><p className="resolution-text">{current.resolution}</p><p className="muted small-print">This record is resolved. Its history remains available below.</p></> : canMutate ? <form onSubmit={resolve}><label htmlFor="resolution">Resolution note</label><textarea id="resolution" rows={4} placeholder="Describe what changed and the next handoff." value={resolution} onChange={event => setResolution(event.target.value)} maxLength={2000} required disabled={locked} /><span className="character-count">{resolution.length} / 2000</span><button className="button primary" type="submit" disabled={locked || !resolution.trim()}>Confirm resolution</button></form> : <p className="muted">Only operators can record a resolution.</p>}</section>
             </div>
             <section className="history" aria-labelledby="history-title"><div className="history-heading"><h3 id="history-title">Change history</h3><span>{events.length} saved {events.length === 1 ? 'change' : 'changes'}</span></div>{events.length === 0 ? <p className="muted">No changes recorded yet. The seeded record starts at version {current.version}.</p> : <ol className="history-list">{events.map(event => <li key={event.id}><span className="history-dot" aria-hidden="true" /><div><p><strong>{event.actor_name}</strong> {event.action === 'created' ? 'created the exception' : event.action === 'resolved' ? 'resolved the exception' : event.assignee_name ? `assigned ${event.assignee_name}` : 'removed the assignment'}</p>{event.note && <p className="history-note">{event.note}</p>}<p className="history-meta">Version {event.version} / {dateLabel(event.created_at)}</p></div></li>)}</ol>}</section>
           </>}
