@@ -305,20 +305,16 @@ function App() {
 
   const refreshAccess = useCallback(async (user: string | null) => {
     const snapshot = captureSessionContext();
-    const expected = sessionValue.current;
-    const generation = ++accessRequest.current;
-    const result = await request<Session>('/api/session');
-    if (generation !== accessRequest.current || user !== activeUser.current || !matchesSessionContext(snapshot)) return null;
-    if (!result.authenticated || !result.user || result.user.id !== user || result.session_context !== snapshot.context ||
-        (expected && !sameIdentity(expected, result))) {
-      retireWorkspace('Your account or session changed. Review the current workspace before new work.'); installSession(result);
-      return null;
-    }
-    retireReadOnlyIntent(result);
-    activeRole.current = result.user.role;
-    installSession(result);
+    // Explicit reads join the same owner as lifecycle checks, including its
+    // queued trailing check. A matching background read cannot discard the
+    // user's refresh, and an older response cannot reinstall obsolete access.
+    await synchronizeSession();
+    if (!mounted.current || user !== activeUser.current || !matchesSessionContext(snapshot)) return null;
+    const result = sessionValue.current;
+    if (!result?.authenticated || !result.user || result.user.id !== user ||
+        result.session_context !== snapshot.context) return null;
     return result;
-  }, [installSession, retireReadOnlyIntent, retireWorkspace]);
+  }, [synchronizeSession]);
 
   const beginQueue = useCallback((view: QueueRequest) => {
     // Invalidate synchronously: an older response can arrive before React has

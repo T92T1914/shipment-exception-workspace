@@ -3,8 +3,12 @@
 This route saves a trusted schema-4 Shipment workspace as a PostgreSQL custom
 archive and restores it into a separately named empty database. The original
 workspace stays intact. The qualified combination is Windows x64, PostgreSQL
-18.1 client/server, CPython 3.13.3 and the pinned ordinary application wheel.
-See [executed verification](VERIFICATION.md) for the exact revision and outcomes.
+18.1 client/server, CPython 3.13.3 and the ordinary v0.8.0 application wheel.
+See [executed v0.8.0 verification](VERIFICATION-v0.8.0.md) for the exact revision
+and outcomes. Reproducing that native qualification uses the v0.8.0 wheel and
+tagged source tools. The v0.8.1 client refresh correction is separate from that
+executed native combination. The qualification helper keeps its v0.8.0 admission
+check rather than silently admitting an unqualified version.
 
 This is a bounded local application handoff. It does not qualify power loss,
 storage corruption, cross-version restoration, failover, high availability,

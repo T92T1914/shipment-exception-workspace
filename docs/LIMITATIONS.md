@@ -79,7 +79,9 @@ practice or suitability for sensitive logistics data.
   authentication serialization is promised. Channel failure retains request
   context checks and explicit/visible-page recovery routes.
 - Session rechecks coalesce active work, but are not a general message rate
-  limiter. A failed recheck clears the unconfirmed view and needs explicit
+  limiter. Explicit refresh joins that work and waits for queued checking to
+  settle before reading current data. This does not promise progress during an
+  endless stream of notifications. A failed recheck clears the unconfirmed view and needs explicit
   recovery. An old in-flight mutation may already have committed when its local
   intent is retired. Recovery sends no automatic business POST and does not
   transfer an earlier actor's retry to the current account.
@@ -122,8 +124,9 @@ practice or suitability for sensitive logistics data.
   dedicated database before that upgrade. There is
   no downgrade, general migration framework or automatic startup upgrade. Older
   seeded records retain their original history without fabricated creation events.
-  The [local restore guide](backup-and-restore.md) covers one trusted PostgreSQL
-  18.1 same-cluster, same-owner route with a separate empty target. Cross-version
+  The [local restore guide](backup-and-restore.md) covers the qualified v0.8.0
+  PostgreSQL 18.1 same-cluster, same-owner route with a separate empty target.
+  The v0.8.1 client correction is not a new native restore qualification. Cross-version
   restore, storage corruption, power loss, disaster recovery and high availability
   remain outside the accepted workflow.
 - Request bodies and field lengths are bounded, but the application has not been
