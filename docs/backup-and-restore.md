@@ -117,7 +117,7 @@ The native commands use explicit host, port, user and database arguments, an
 isolated child connection environment and no password prompt. The actual
 database OIDs and cluster identity are checked, not just two different strings.
 An equal source/target, unexpected endpoint or target with a table, sequence,
-index, function, type, extra schema or default privilege is refused before
+index, function, type, large object, extra schema or default privilege is refused before
 `pg_restore` runs.
 
 The normal restore reads the complete archive with `--single-transaction`.

@@ -71,6 +71,7 @@ def empty_database(params):
             (SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname='public'),
             (SELECT count(*) FROM pg_depend WHERE refclassid='pg_namespace'::regclass AND refobjid='public'::regnamespace),
             (SELECT count(*) FROM pg_extension WHERE extname<>'plpgsql'),
+            (SELECT count(*) FROM pg_largeobject_metadata),
             (SELECT count(*) FROM pg_default_acl)""").fetchone()
         if namespaces or any(objects):
             raise Refused("Target must be a separate pristine empty database, including types/functions/schemas")

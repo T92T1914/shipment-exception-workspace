@@ -134,6 +134,7 @@ def control_state(params):
             "types": conn.execute("SELECT typname,typtype FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname='public' ORDER BY 1").fetchall(),
             "extra_schema": conn.execute("SELECT nspname FROM pg_namespace WHERE nspname='restore_extra'").fetchall(),
             "collations": conn.execute("SELECT collname,collprovider FROM pg_collation c JOIN pg_namespace n ON n.oid=c.collnamespace WHERE n.nspname='public' ORDER BY 1").fetchall(),
+            "large_objects": conn.execute("SELECT oid,lomowner,lomacl::text,lo_get(oid) FROM pg_largeobject_metadata ORDER BY oid").fetchall(),
         }
         if ("sentinel", "r") in result["relations"]:
             result["sentinel_rows"] = conn.execute("SELECT id FROM sentinel ORDER BY id").fetchall()
@@ -171,6 +172,7 @@ def negative_controls(pg_bin, source, target, archive, output):
         ("type", "CREATE TYPE public.sentinel AS ENUM ('kept')"),
         ("schema", "CREATE SCHEMA restore_extra"),
         ("collation", 'CREATE COLLATION public.sentinel FROM pg_catalog."C"'),
+        ("largeobject", "SELECT lo_from_bytea(0,decode('6b657074','hex'))"),
     ):
         params = new_control(label)
         with connect(params) as conn:
