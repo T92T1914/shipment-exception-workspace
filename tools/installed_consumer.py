@@ -89,12 +89,30 @@ def main():
             assert "script-src 'self'" in html.headers["content-security-policy"]
             notices = client.get("/third-party-notices")
             assert notices.status_code == 200 and "Meta Platforms" in notices.text
-            csrf = client.get("/api/session").json()["csrf_token"]
+            anonymous = client.get("/api/session").json()
+            csrf = anonymous["csrf_token"]
             session = client.post("/api/login", json={"email": "jules@harbor.example", "password": password},
-                                  headers={"Origin": base, "X-CSRF-Token": csrf})
+                                  headers={"Origin": base, "X-CSRF-Token": csrf,
+                                           "X-Workspace-Context": anonymous["session_context"]})
             assert session.status_code == 200, session.text
             assert session.json()["user"]["role"] == "operator"
-            headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"], "Idempotency-Key": str(uuid4())}
+            retired_context = session.json()["session_context"]
+            original_actor = session.json()["user"]["id"]
+            session = client.post("/api/login", json={"email": "jules@harbor.example", "password": password},
+                                  headers={"Origin": base, "X-CSRF-Token": session.json()["csrf_token"],
+                                           "X-Workspace-Context": retired_context})
+            assert session.status_code == 200 and session.json()["user"]["id"] == original_actor
+            context = session.json()["session_context"]
+            assert len(context) == 64 and context != retired_context
+            client.headers["X-Workspace-Context"] = context
+            mismatch = client.get("/api/members", headers={"X-Workspace-Context": retired_context})
+            assert mismatch.status_code == 409 and mismatch.json()["error"]["code"] == "session_changed"
+            assert context not in mismatch.text and retired_context not in mismatch.text
+            assert client.get("/api/session", headers={"X-Workspace-Context": retired_context}).json()["session_context"] == context
+            with httpx.Client(base_url=base, cookies=client.cookies, trust_env=False) as legacy:
+                assert legacy.get("/api/members").status_code == 200
+            headers = {"Origin": base, "X-CSRF-Token": session.json()["csrf_token"],
+                       "X-Workspace-Context": context, "Idempotency-Key": str(uuid4())}
             queue_params = {"q": "HS-", "status": "all", "limit": 1}
             first_page = client.get("/api/exceptions", params=queue_params).json()
             assert len(first_page["items"]) == 1 and first_page["page_size"] == 1
@@ -130,7 +148,10 @@ def main():
             review_session = reviewer.post("/api/login", json={"email": "taylor@harbor.example", "password": password},
                                            headers={"Origin": base, "X-CSRF-Token": reviewer_csrf})
             assert review_session.status_code == 200 and review_session.json()["user"]["role"] == "reviewer"
-            reviewer_headers = {"Origin": base, "X-CSRF-Token": review_session.json()["csrf_token"]}
+            reviewer_context = review_session.json()["session_context"]
+            reviewer.headers["X-Workspace-Context"] = reviewer_context
+            reviewer_headers = {"Origin": base, "X-CSRF-Token": review_session.json()["csrf_token"],
+                                "X-Workspace-Context": reviewer_context}
 
             def business_rows():
                 with psycopg.connect(database_url) as conn:
@@ -158,9 +179,9 @@ def main():
             review_without_writes()
             login_csrf = login_client.get("/api/session").json()["csrf_token"]
             login_headers = {"Origin": base, "X-CSRF-Token": login_csrf}
-            # The two successful sign-ins charged two admissions. Charge38
+            # Three successful sign-ins charged three admissions. Charge37
             # further verifications without authenticating this separate client.
-            for index in range(38):
+            for index in range(37):
                 subject = "unknown-one@synthetic.example" if index < 20 else "unknown-two@synthetic.example"
                 denied = login_client.post("/api/login", json={"email": subject, "password": "Synthetic wrong password"}, headers=login_headers)
                 assert denied.status_code == 401, denied.text
@@ -172,6 +193,9 @@ def main():
             stop(server)
             server = None
             server = start()
+            assert client.get("/api/session").json()["session_context"] == context
+            assert reviewer.get("/api/session").json()["session_context"] == reviewer_context
+            assert client.get("/api/members", headers={"X-Workspace-Context": retired_context}).status_code == 409
             still_limited = login_client.post("/api/login", json={"email": "jules@harbor.example", "password": password}, headers=login_headers)
             assert still_limited.status_code == 429
             assert login_client.get("/api/session").json()["authenticated"] is False
@@ -239,8 +263,11 @@ def main():
              "reviewer_read_and_business_write_denial_survived_restart": True,
              "bounded_detail_and_history_cursor_survived_restart": True,
              "complete_three_page_history_without_duplicates": True,
-             "history_append_fenced_until_refresh": True}, indent=2), encoding="utf-8")
-        print("Installed wheel, UI, API restart, durable retry, admission, queue pages, reviewer access and bounded history accepted.")
+             "history_append_fenced_until_refresh": True,
+             "same_actor_login_rotates_context": True,
+             "retired_context_denied_and_legacy_cookie_client_accepted": True,
+             "operator_and_reviewer_context_survived_process_restart": True}, indent=2), encoding="utf-8")
+        print("Installed wheel, UI, API restart, durable retry, admission, queue pages, reviewer access, bounded history and session context accepted.")
         if args.keep_server:
             server = None
     finally:

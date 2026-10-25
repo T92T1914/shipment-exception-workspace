@@ -36,6 +36,12 @@ class Problem(Exception):
         self.body = {"error": {"code": code, "message": message, **extra}}
 
 
+def session_context(current):
+    # This public consistency marker cannot authenticate a request. Domain
+    # separation keeps it distinct from the stored session hash and CSRF token.
+    return hashlib.sha256(b"shipment-ui-context-v1:" + current["token_hash"].encode("ascii")).hexdigest()
+
+
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -164,9 +170,19 @@ def create_app(settings: Settings):
             LEFT JOIN organizations o ON o.id=u.organization_id
             WHERE token_hash=%s AND expires_at > now()""", (digest,)).fetchone()
 
-    def principal(current=Depends(session)):
+    def check_context(request, current):
+        supplied = request.headers.getlist("x-workspace-context")
+        if not supplied:
+            return
+        if (len(supplied) != 1 or len(supplied[0]) != 64 or
+                any(char not in "0123456789abcdef" for char in supplied[0]) or not current or
+                not secrets.compare_digest(supplied[0], session_context(current))):
+            raise Problem(409, "session_changed", "Your session changed. Refresh the workspace before continuing.")
+
+    def principal(request: Request, current=Depends(session)):
         if not current or not current["user_id"]:
             raise Problem(401, "not_authenticated", "Sign in to continue.")
+        check_context(request, current)
         return current
 
     def csrf(request, current):
@@ -179,7 +195,8 @@ def create_app(settings: Settings):
             raise Problem(415, "json_required", "Submit JSON for this action.")
 
     def payload(current):
-        result = {"authenticated": bool(current["user_id"]), "csrf_token": current["csrf_token"]}
+        result = {"authenticated": bool(current["user_id"]), "csrf_token": current["csrf_token"],
+                  "session_context": session_context(current)}
         if current["user_id"]:
             result["user"] = {"id": current["user_id"], **{key: current[key] for key in ("name", "email", "organization_id", "organization_name", "role")}}
         return jsonable_encoder(result)
@@ -210,6 +227,7 @@ def create_app(settings: Settings):
 
     @app.post("/api/login")
     def login(body: Login, request: Request, current=Depends(session), conn=Depends(connection)):
+        check_context(request, current)
         csrf(request, current)
         identifier = body.email.strip().lower()
         retry_after = reserve_login(conn, identifier)

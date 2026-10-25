@@ -1496,3 +1496,360 @@ test('delayed history is retired by record changes, refresh and logout', async (
     await page.unrouteAll({ behavior: 'wait' });
   }
 });
+
+async function signInHere(page: Page, organization: 'northline' | 'harbor', reviewer = false) {
+  await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+  await page.getByLabel('Email address', { exact: true }).fill(reviewer
+    ? organization === 'northline' ? 'casey@northline.example' : 'taylor@harbor.example'
+    : organization === 'northline' ? 'alex@northline.example' : 'jules@harbor.example');
+  await page.getByLabel('Password', { exact: true }).fill(demoPassword!);
+  const submit = page.getByRole('button', { name: 'Sign in', exact: true });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page.locator('.identity')).toContainText(organization === 'northline' ? 'Northline Logistics' : 'Harbor Supply');
+  await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+}
+
+async function switchAccountHere(page: Page, organization: 'northline' | 'harbor', reviewer = false) {
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await signInHere(page, organization, reviewer);
+}
+
+async function expectOnlyOrganization(page: Page, organization: 'northline' | 'harbor') {
+  await expect(page.locator('.identity')).toContainText(organization === 'northline' ? 'Northline Logistics' : 'Harbor Supply');
+  await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+  await expect(page.locator('.exception-row')).not.toHaveCount(0);
+  const references = await page.locator('.exception-row .reference').allTextContents();
+  expect(references.every(value => value.startsWith(organization === 'northline' ? 'NL-' : 'HS-'))).toBe(true);
+  await expect(page.locator('.detail-heading')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+}
+
+async function nextFrames(page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 'narrow', width: 390, height: 844 }]) {
+  test(`${viewport.name} shared-cookie tabs clear private state and adopt the actual next account`, async ({ page, context }) => {
+    loginAdmissionFixture('expire');
+    const assertFirst = observeBrowser(page);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await login(page);
+    await searchQueue(page, 'NL-HISTORY-001', 1);
+    await openRecord(page, 'NL-HISTORY-001');
+    await page.getByLabel('Resolution note', { exact: true }).fill('Private draft from the previous account.');
+    await page.evaluate(() => {
+      const state = window as Window & { sessionDocument?: string; sessionMessages?: unknown[] };
+      state.sessionDocument = 'same document'; state.sessionMessages = [];
+      const observer = new BroadcastChannel('shipment-workspace-session-v1');
+      observer.addEventListener('message', event => state.sessionMessages!.push(event.data));
+      window.addEventListener('pagehide', () => observer.close(), { once: true });
+    });
+    let firstBusinessPosts = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) firstBusinessPosts++;
+    });
+    const second = await context.newPage();
+    const assertSecond = observeBrowser(second);
+    try {
+      await second.goto('/');
+      await expect(second.locator('.identity')).toContainText('Northline Logistics');
+      await second.getByRole('button', { name: 'Sign out', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+      await expect(page.locator('.detail-heading')).toHaveCount(0);
+      await signInHere(second, 'harbor', true);
+      await expectOnlyOrganization(page, 'harbor');
+      await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+      expect(await page.evaluate(() => (window as Window & { sessionDocument?: string }).sessionDocument)).toBe('same document');
+      await expect(page.getByLabel('Resolution note', { exact: true })).toHaveCount(0);
+      const messages = await page.evaluate(() => (window as Window & { sessionMessages?: unknown[] }).sessionMessages);
+      expect(messages?.length).toBeGreaterThanOrEqual(2);
+      expect(messages?.every(value => JSON.stringify(value) === JSON.stringify({ v: 1, type: 'session-changed' }))).toBe(true);
+      expect(firstBusinessPosts).toBe(0);
+      await assertNoHorizontalOverflow(page);
+      await screenshot(page, `${viewport.name}-session-change.png`);
+      assertFirst(); assertSecond();
+    } finally { await second.close(); }
+  });
+}
+
+for (const channelMode of ['missing', 'constructor-throws', 'post-throws'] as const) {
+  test(`${channelMode} channel still rejects stale expected context before displaying another account`, async ({ page, context }) => {
+    loginAdmissionFixture('expire');
+    test.info().annotations.push({ type: 'fixture-only', description: 'Browser channel and lifecycle notifications are disabled in this fixture to exercise the actual server context-mismatch recovery path.' });
+    await context.addInitScript(mode => {
+      if (mode === 'missing') Object.defineProperty(window, 'BroadcastChannel', { configurable: true, value: undefined });
+      else if (mode === 'constructor-throws') Object.defineProperty(window, 'BroadcastChannel', { configurable: true, value: class { constructor() { throw new Error('Synthetic channel failure'); } } });
+      else {
+        const Native = window.BroadcastChannel;
+        Object.defineProperty(window, 'BroadcastChannel', { configurable: true, value: class extends Native {
+          postMessage() { throw new Error('Synthetic postMessage failure'); }
+        } });
+      }
+      window.addEventListener('focus', event => event.stopImmediatePropagation(), true);
+      document.addEventListener('visibilitychange', event => event.stopImmediatePropagation(), true);
+    }, channelMode);
+    const assertFirst = observeBrowser(page, { expectedStatus: 409 });
+    await login(page);
+    const second = await context.newPage();
+    const assertSecond = observeBrowser(second);
+    try {
+      await second.goto('/');
+      await expect(second.locator('.identity')).toContainText('Northline Logistics');
+      await switchAccountHere(second, 'harbor', true);
+      await expect(page.locator('.identity')).toContainText('Northline Logistics');
+      const mismatch = page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/exceptions' && response.status() === 409);
+      await page.getByLabel('Search references and summaries', { exact: true }).fill('HS-');
+      await page.getByRole('button', { name: 'Search queue', exact: true }).click();
+      expect((await (await mismatch).json()).error.code).toBe('session_changed');
+      await expectOnlyOrganization(page, 'harbor');
+      await expect(page.locator('.session-message')).toContainText('account or session changed');
+      assertFirst(); assertSecond();
+    } finally { await second.close(); }
+  });
+}
+
+for (const kind of ['queue', 'detail', 'history'] as const) {
+  test(`a delayed actual ${kind} response cannot enter a new account on the same document`, async ({ page, context }) => {
+    loginAdmissionFixture('expire');
+    const assertFirst = observeBrowser(page);
+    await login(page, 'northline', 'reviewer');
+    await page.evaluate(() => { (window as Window & { sessionDocument?: string }).sessionDocument = 'original delayed-response document'; });
+    await searchQueue(page, 'NL-HISTORY-001', 1);
+    await openRecord(page, 'NL-HISTORY-001');
+    const id = new URL(page.url()).hash.split('/')[1];
+    let release!: () => void;
+    let arrived!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const received = new Promise<void>(resolve => { arrived = resolve; });
+    const pathname = kind === 'queue' ? '/api/exceptions' : kind === 'detail' ? `/api/exceptions/${id}` : `/api/exceptions/${id}/history`;
+    const pattern = kind === 'queue' ? '**/api/exceptions?**' : kind === 'detail' ? `**/api/exceptions/${id}` : `**/api/exceptions/${id}/history?**`;
+    await page.route(pattern, async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      arrived(); await gate;
+      await route.fulfill({ response: actual });
+    }, { times: 1 });
+    if (kind === 'queue') {
+      await page.getByLabel('Search references and summaries', { exact: true }).fill('NL-');
+      await page.getByRole('button', { name: 'Search queue', exact: true }).click();
+    } else if (kind === 'detail') {
+      await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    } else await page.getByRole('button', { name: 'Older changes', exact: true }).click();
+    await received;
+    const second = await context.newPage();
+    const assertSecond = observeBrowser(second);
+    try {
+      await second.goto('/');
+      await expect(second.locator('.identity')).toContainText('Northline Logistics');
+      await switchAccountHere(second, 'harbor', true);
+      await expectOnlyOrganization(page, 'harbor');
+      await openRecord(page, 'HS-2057');
+      const delivered = page.waitForResponse(response => new URL(response.url()).pathname === pathname);
+      release(); await (await delivered).finished(); await nextFrames(page);
+      await expect(page.locator('.identity')).toContainText('Harbor Supply');
+      expect(await page.evaluate(() => (window as Window & { sessionDocument?: string }).sessionDocument)).toBe('original delayed-response document');
+      await expect(page.locator('.detail-heading .reference')).toHaveText('HS-2057');
+      await expect(page.locator('.workspace')).not.toContainText('History paging synthetic review');
+      expect((await page.locator('.exception-row .reference').allTextContents()).every(value => value.startsWith('HS-'))).toBe(true);
+      const actual = await page.request.get('/api/exceptions/00000000-0000-0000-0000-0000000000c9');
+      expect(actual.status()).toBe(200);
+      const expected = await actual.json();
+      expect(await historyVersions(page)).toEqual(expected.events.map((event: { version: number }) => event.version));
+      assertFirst(); assertSecond();
+    } finally {
+      release(); await page.unrouteAll({ behavior: 'wait' }); await second.close();
+    }
+  });
+}
+
+for (const delivery of ['dropped', 'delayed'] as const) {
+  test(`an actually committed ${delivery} mutation is retired across a session change without replay`, async ({ page, context }) => {
+    loginAdmissionFixture('expire');
+    const assertFirst = observeBrowser(page, { expectedFailedRequest: /\/api\/exceptions\/[^/]+\/assign$/ });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    const sessionResponse = await page.request.get('/api/session');
+    const session = await sessionResponse.json();
+    const reference = `NL-SESSION-${delivery.toUpperCase()}`;
+    const createdResponse = await page.request.post('/api/exceptions', {
+      headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': session.csrf_token, 'Idempotency-Key': await page.evaluate(() => crypto.randomUUID()) },
+      data: { reference, summary: 'Synthetic session transition', details: 'Disposable interrupted mutation acceptance.', priority: 'normal' },
+    });
+    expect(createdResponse.status()).toBe(201);
+    const created = await createdResponse.json();
+    await page.evaluate(id => { window.location.hash = `exception/${id}`; }, created.exception.id);
+    await expect(page.locator('.detail-heading .reference')).toHaveText(reference);
+    let release!: () => void;
+    let arrived!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const committed = new Promise<void>(resolve => { arrived = resolve; });
+    let attempts = 0;
+    const path = `/api/exceptions/${created.exception.id}/assign`;
+    await page.route(`**${path}`, async route => {
+      attempts++;
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      expect((await actual.json()).exception.version).toBe(2);
+      arrived();
+      if (delivery === 'dropped') await route.abort('failed');
+      else { await gate; await route.fulfill({ response: actual }); }
+    });
+    await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+    await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+    await committed;
+    if (delivery === 'dropped') await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeVisible();
+    const second = await context.newPage();
+    const assertSecond = observeBrowser(second);
+    try {
+      await second.goto('/');
+      await expect(second.locator('.identity')).toContainText('Northline Logistics');
+      // Re-authenticating the same actor must also retire its earlier intent.
+      await switchAccountHere(second, delivery === 'dropped' ? 'northline' : 'harbor');
+      await expectOnlyOrganization(page, delivery === 'dropped' ? 'northline' : 'harbor');
+      await expect(page.locator('.session-message')).toContainText('An earlier change may already be saved.');
+      await expect(page.locator('.session-message')).toContainText('local retry was retired');
+      if (delivery === 'delayed') {
+        const delivered = page.waitForResponse(response => new URL(response.url()).pathname === path);
+        release(); await (await delivered).finished(); await nextFrames(page);
+        await expect(page.locator('.identity')).toContainText('Harbor Supply');
+        await expect(page.locator('.session-message')).toContainText('An earlier change may already be saved.');
+      } else {
+        const currentResponse = await page.request.get(`/api/exceptions/${created.exception.id}`);
+        expect(currentResponse.status()).toBe(200);
+        const current = await currentResponse.json();
+        expect(current.exception.version).toBe(2);
+        expect(current.events).toHaveLength(2);
+        expect(current.events.map((event: { action: string }) => event.action)).toEqual(['created', 'assigned']);
+      }
+      expect(attempts).toBe(1);
+      await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+      await assertNoHorizontalOverflow(page);
+      assertFirst(); assertSecond();
+    } finally { release(); await page.unrouteAll({ behavior: 'wait' }); await second.close(); }
+  });
+}
+
+test('session hints are strict, coalesced and authoritative while resumption preserves a matching draft', async ({ page }) => {
+  loginAdmissionFixture('expire');
+  const assertBrowser = observeBrowser(page);
+  await login(page);
+  await searchQueue(page, 'NL-HISTORY-001', 1);
+  await openRecord(page, 'NL-HISTORY-001');
+  const draft = 'Preserve this draft when the actual account is unchanged.';
+  await page.getByLabel('Resolution note', { exact: true }).fill(draft);
+  for (const event of ['focus', 'visibilitychange', 'pageshow'] as const) {
+    const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+    await page.evaluate(kind => {
+      if (kind === 'focus') window.dispatchEvent(new Event('focus'));
+      else if (kind === 'visibilitychange') document.dispatchEvent(new Event('visibilitychange'));
+      else window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    }, event);
+    expect((await checked).status()).toBe(200);
+    await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+    await expect(page.getByLabel('Resolution note', { exact: true })).toHaveValue(draft);
+  }
+  let checks = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/session') checks++; });
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('shipment-workspace-session-v1');
+    for (const value of [null, [], { v: 2, type: 'session-changed' }, { v: 1, type: 'other' }, { v: 1, type: 'session-changed', user: 'untrusted' }]) channel.postMessage(value);
+    channel.close();
+  });
+  await nextFrames(page);
+  expect(checks).toBe(0);
+  await expect(page.getByLabel('Resolution note', { exact: true })).toHaveValue(draft);
+  let release!: () => void;
+  let arrived!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const first = new Promise<void>(resolve => { arrived = resolve; });
+  let routed = 0;
+  await page.route('**/api/session', async route => {
+    routed++;
+    if (routed === 1) {
+      const actual = await route.fetch();
+      arrived(); await gate; await route.fulfill({ response: actual });
+    } else await route.continue();
+  });
+  try {
+    await page.evaluate(() => {
+      const channel = new BroadcastChannel('shipment-workspace-session-v1');
+      for (let index = 0; index < 20; index++) channel.postMessage({ v: 1, type: 'session-changed' });
+      channel.close();
+    });
+    await first; await nextFrames(page);
+    expect(routed).toBe(1);
+    await expect(page.locator('.detail-heading')).toHaveCount(0);
+    release();
+    await expectOnlyOrganization(page, 'northline');
+    expect(routed).toBe(2);
+    assertBrowser();
+  } finally { release(); await page.unrouteAll({ behavior: 'wait' }); }
+});
+
+test('a failed authoritative session check hides private state and has a manual retry without replay', async ({ page }) => {
+  loginAdmissionFixture('expire');
+  const assertBrowser = observeBrowser(page, { expectedStatus: 503 });
+  await login(page);
+  await searchQueue(page, 'NL-HISTORY-001', 1);
+  await openRecord(page, 'NL-HISTORY-001');
+  await page.getByLabel('Resolution note', { exact: true }).fill('Private unsent draft before a failed check.');
+  let businessPosts = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+  });
+  await page.route('**/api/session', route => route.fulfill({ status: 503, contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'synthetic_unavailable', message: 'Synthetic session failure.' } }) }), { times: 1 });
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('button', { name: 'Check current session', exact: true })).toBeEnabled();
+  await expect(page.locator('.identity')).toHaveCount(0);
+  await expect(page.locator('.workspace')).toHaveCount(0);
+  await expect(page.locator('.session-message')).toContainText('current session could not be confirmed');
+  await page.getByRole('button', { name: 'Check current session', exact: true }).click();
+  await expectOnlyOrganization(page, 'northline');
+  await expect(page.locator('.detail-heading')).toHaveCount(0);
+  expect(businessPosts).toBe(0);
+  assertBrowser();
+});
+
+test('incorrect credentials retain the anonymous form without automatic session recovery or retry', async ({ page }) => {
+  loginAdmissionFixture('expire');
+  const assertBrowser = observeBrowser(page, { expectedStatus: 401 });
+  const form = await prepareSignIn(page, 'Synthetic incorrect password');
+  await expect(form.submit).toBeEnabled();
+  const beforeResponse = await page.request.get('/api/session');
+  expect(beforeResponse.status()).toBe(200);
+  const before = await beforeResponse.json();
+  expect(before.authenticated).toBe(false);
+  let loginPosts = 0;
+  let sessionReads = 0;
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/login' && request.method() === 'POST') loginPosts++;
+    if (path === '/api/session' && request.method() === 'GET') sessionReads++;
+  });
+  const rejected = page.waitForResponse(response => new URL(response.url()).pathname === '/api/login');
+  await form.submit.click();
+  const response = await rejected;
+  expect(response.status()).toBe(401);
+  expect((await response.json()).error.code).toBe('invalid_credentials');
+  await expect(page.getByRole('alert')).toHaveText('Email or password is incorrect.');
+  await expect(form.email).toHaveValue('alex@northline.example');
+  await expect(form.password).toHaveValue('Synthetic incorrect password');
+  await expect(form.submit).toBeEnabled();
+  await expect(page.locator('.session-message')).toHaveCount(0);
+  await nextFrames(page);
+  expect(loginPosts).toBe(1);
+  expect(sessionReads).toBe(0);
+  const afterResponse = await page.request.get('/api/session');
+  expect(afterResponse.status()).toBe(200);
+  const after = await afterResponse.json();
+  expect(after.authenticated).toBe(false);
+  expect(after.session_context).toBe(before.session_context);
+  await form.password.fill(demoPassword!);
+  await form.submit.click();
+  await expectOnlyOrganization(page, 'northline');
+  expect(loginPosts).toBe(2);
+  expect(sessionReads).toBe(0);
+  assertBrowser();
+});

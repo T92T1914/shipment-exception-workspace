@@ -48,6 +48,86 @@ or constitute PostgreSQL row-level security. PostgreSQL 18's
 [constraint documentation](https://www.postgresql.org/docs/18/ddl-constraints.html)
 describes the composite foreign-key mechanism.
 
+## Shared browser session coherence
+
+Cookie sessions are shared by the application's tabs. A tab's in-memory user
+label and private state do not automatically change when another tab replaces
+the cookie. Version 0.7.0 adds a server-checked expected context plus advisory
+cross-tab notifications, keeping session authority on the server. It does not
+create separate identities for each tab or put a bearer token in browser storage.
+
+Login and session payloads include `session_context`, the lowercase hexadecimal
+SHA-256 of the ASCII prefix `shipment-ui-context-v1:` followed by the stored
+`token_hash`. Domain separation keeps this marker distinct from the raw cookie,
+stored token digest and CSRF value. It is public consistency metadata, not an
+authentication credential. It can correlate one session and is not broadcast
+or persisted. Repeated session reads and API restarts retain it. Login rotates
+it even for the same actor, without a new schema column.
+
+The optional `X-Workspace-Context` request header states which session context
+the client expects. If present, there must be exactly one parsed value of 64
+lowercase hexadecimal characters matching the current session marker. A mismatch,
+duplicate or invalid value gets generic HTTP 409 `session_changed`, without
+echoing either value. Protected routes first require authenticated current
+session state, so absent or expired authentication remains HTTP 401. Their
+context check occurs before route work and business receipt reservation/lookup.
+Login checks a supplied context before CSRF and login admission. A supplied
+context with no current session is rejected too. `GET /api/session` ignores an
+expected-context header and remains the recovery authority.
+
+Clients that omit the header retain the existing API behavior. The marker never
+selects an actor, organization or role and does not replace cookie authentication,
+Origin/CSRF checks, organization-scoped queries or current operator admission.
+The marker identifies a session, not an immutable database principal. A role or
+organization change can leave the marker unchanged. Session refresh compares
+authentication, actor and organization as well as the marker before retaining
+private state, and updates the current role from the server. Every operation
+still applies its existing current database policy.
+
+The browser holds a per-document context and generation in memory. Each request
+captures them, attaches the expected context except on `/api/session`, and checks
+them after response arrival and JSON reading. A retired context raises a stale
+response outcome instead of updating queue, detail, history, notices or retry
+state. Session refresh also has a request generation, so an older recheck cannot
+reinstall a retired session. Action ownership keeps an old request's cleanup
+from clearing a newer action's busy state.
+
+Successful login/logout notify `shipment-workspace-session-v1`. The exact hint
+is `{ v: 1, type: 'session-changed' }`; receivers accept only that two-field
+shape. It carries no cookie, context marker, CSRF token, actor, organization,
+role, business payload or record. A receiver retires its old context and private
+state synchronously, then checks `/api/session`. The receiver never installs an
+identity from the message or echoes the hint. Logout establishes its next
+anonymous cookie before notifying peers, reducing competing anonymous-session
+creation by those peers.
+
+Session rechecks coalesce into one active request loop with a queued follow-up
+when more work arrives. Focus and visible-page transitions recheck a known
+session. A persisted `pageshow` triggers the same visible-page check after page
+restoration. These checks compare server facts rather than assuming every hint
+was delivered. The channel constructor, send and cleanup paths tolerate failure,
+and listeners/channel are closed on cleanup. A failed server check retires the
+unconfirmed view and offers **Check current session**. This is not a message
+rate limiter or a guarantee that arbitrary same-origin script cannot trigger
+more checks.
+
+Retirement clears queue criteria, detail, history pages/positions, assignment
+and resolution drafts, intake fields and local pending intent. If a mutation
+was pending or in flight, the message says that an earlier change may already
+be saved. It does not undo a commit or automatically replay its key/body under
+the next account. Server receipts remain subject to their original actor,
+organization and current permission rules. Ordinary interrupted requests retain
+their original key/body while their session context stays current.
+
+The [HTML broadcast mechanism](https://html.spec.whatwg.org/multipage/web-messaging.html#broadcasting-to-other-browsing-contexts)
+and [browser lifecycle](https://developer.mozilla.org/en-US/docs/Web/API/Window/pageshow_event)
+support these rechecks. Delivery is limited by storage partition, active page
+state and queued messages. This is not cross-device synchronization, immediate
+frozen-page erasure, instantaneous revocation or serialization of concurrent
+authentication responses. Matching context does not certify that database
+privileges are unchanged. Source, baseline reproduction and executed acceptance
+remain separate evidence in [verification](VERIFICATION.md).
+
 ## Operator and reviewer access
 
 The user row contains exactly one role, `operator` or `reviewer`. The server's
@@ -391,7 +471,8 @@ that local pending intent, switches conservatively to read-only access and
 explains that an earlier interrupted request may already be saved. It does not
 turn the denial into proof of an earlier failure. A permission refresh performs
 no automatic POST. Current records can be inspected after an explicit refresh.
-Other uncertain operator outcomes retain their original canonical key and body.
+Other uncertain operator outcomes retain their original canonical key and body
+while their session context stays current.
 
 Pending intake keeps its submitted fields and blocks another form submission or
 navigation to a different record. A duplicate reference is a confirmed conflict,
@@ -412,6 +493,9 @@ and frame-denial headers. These are specific defensive
 boundaries, not a claim of complete application security.
 
 ## Durable state and packaging
+
+Version 0.7.0 adds shared-session coherence without changing schema 4 or requiring
+a new migration for an existing schema 4 database.
 
 Version 0.6.0 adds bounded history without changing schema 4 or requiring a new
 migration for an existing schema 4 database.

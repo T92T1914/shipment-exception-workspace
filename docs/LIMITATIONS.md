@@ -64,6 +64,21 @@ practice or suitability for sensitive logistics data.
   committed, so the later denial does not establish its outcome. Permission
   refresh does not automatically retry a POST. There is no automatic role-change
   push, cross-device recovery or receipt browser.
+- The expected session-context header is a consistency check, not authentication
+  or permission. It remains optional for existing API clients. A matching marker
+  does not mean that database role, organization or other principal facts are
+  unchanged; the server still enforces its current session and business policy.
+- Cookie sessions are shared across tabs. The UI retires private state after an
+  observed session transition and rechecks actual server state. Its cross-tab
+  signal is advisory and carries no identity or private data. No immediate
+  frozen-page erasure, cross-device push, instantaneous revocation or concurrent
+  authentication serialization is promised. Channel failure retains request
+  context checks and explicit/visible-page recovery routes.
+- Session rechecks coalesce active work, but are not a general message rate
+  limiter. A failed recheck clears the unconfirmed view and needs explicit
+  recovery. An old in-flight mutation may already have committed when its local
+  intent is retired. Recovery sends no automatic business POST and does not
+  transfer an earlier actor's retry to the current account.
 
 ## Security and operations
 
@@ -97,7 +112,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.6.0 retains schema 4. The explicit transactional upgrade from schema
+- Version 0.7.0 retains schema 4. The explicit transactional upgrade from schema
   1, 2 or 3 preserves existing users as operators and gives future omitted roles
   a reviewer default. Stop application processes and privately back up the
   dedicated database before that upgrade. There is
