@@ -1858,3 +1858,144 @@ test('incorrect credentials retain the anonymous form without automatic session 
   expect(sessionReads).toBe(0);
   assertBrowser();
 });
+async function createRoleRecoveryRecord(page: Page, suffix: string) {
+  const current = await (await page.request.get('/api/session')).json();
+  const created = await page.request.post('/api/exceptions', {
+    headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': current.csrf_token,
+      'X-Workspace-Context': current.session_context, 'Idempotency-Key': crypto.randomUUID() },
+    data: { reference: `NL-ROLE-${suffix}`, summary: `Role recovery ${suffix}`,
+      details: 'Synthetic record created through the actual API for role recovery acceptance.', priority: 'normal' },
+  });
+  expect(created.status()).toBe(201);
+  const id = (await created.json()).exception.id as string;
+  await page.evaluate(value => { window.location.hash = `exception/${value}`; }, id);
+  await expect(page.locator('.detail-heading .reference')).toHaveText(`NL-ROLE-${suffix}`);
+  return { id, session: current };
+}
+
+for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 'narrow', width: 390, height: 844 }]) {
+  for (const responseMode of ['dropped', 'held'] as const) {
+    test(`${viewport.name} session-observed read-only access retires a ${responseMode} operator change without replay`, async ({ page }) => {
+      loginAdmissionFixture('expire');
+      roleFixture('promote-alex');
+      const assertBrowser = observeBrowser(page, responseMode === 'dropped'
+        ? { expectedFailedRequest: /\/api\/exceptions\/[^/]+\/assign$/ } : {});
+      let release!: () => void;
+      let arrived!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const admitted = new Promise<void>(resolve => { arrived = resolve; });
+      try {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await login(page);
+        const { id, session: beforeSession } = await createRoleRecoveryRecord(page, `${viewport.name}-${responseMode}`);
+        await page.evaluate(() => { (window as Window & { recoveryDocument?: string }).recoveryDocument = 'same recovery document'; });
+        let businessPosts = 0;
+        page.on('request', request => {
+          if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+        });
+        let committedStatus: number | undefined;
+        await page.route(`**/api/exceptions/${id}/assign`, async route => {
+          const actual = await route.fetch();
+          committedStatus = actual.status();
+          arrived();
+          if (responseMode === 'dropped') await route.abort('failed');
+          else { await gate; await route.fulfill({ response: actual }); }
+        });
+        await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+        await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+        await admitted;
+        expect(committedStatus).toBe(200);
+        if (responseMode === 'dropped') {
+          await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeEnabled();
+        }
+        const saved = await (await page.request.get(`/api/exceptions/${id}`)).json();
+        expect(saved.exception.version).toBe(2);
+        expect(saved.exception.assignee_name).toBe('Sam Rivera');
+        expect(saved.events).toHaveLength(2);
+        roleFixture('demote-alex');
+        const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        const current = await (await checked).json();
+        expect(current.user.id).toBe(beforeSession.user.id);
+        expect(current.user.organization_id).toBe(beforeSession.user.organization_id);
+        expect(current.session_context).toBe(beforeSession.session_context);
+        expect(current.user.role).toBe('reviewer');
+        await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+        await expect(page.locator('.session-message')).toContainText('Your current access is read-only.');
+        await expect(page.locator('.session-message')).toContainText('An earlier change may already be saved.');
+        await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+        await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeEnabled();
+        await expect(page.getByRole('button', { name: 'Search queue', exact: true })).toBeEnabled();
+        await expect(page.locator('.exception-row')).not.toHaveCount(0);
+        await expect(page.locator('.detail-heading')).toHaveCount(0);
+        expect(await page.evaluate(() => (window as Window & { recoveryDocument?: string }).recoveryDocument)).toBe('same recovery document');
+        if (responseMode === 'held') {
+          const delivered = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/assign'));
+          release();
+          const oldResponse = await delivered;
+          expect(oldResponse.status()).toBe(200);
+          await oldResponse.finished();
+          await nextFrames(page);
+          await expect(page.getByText('Assignment saved.', { exact: true })).toHaveCount(0);
+          await expect(page.locator('.session-message')).toContainText('An earlier change may already be saved.');
+          await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+          await expect(page.locator('.detail-heading')).toHaveCount(0);
+        }
+        await refreshWorkspaceAccess(page, 'reviewer');
+        await searchQueue(page, `NL-ROLE-${viewport.name}-${responseMode}`, 1);
+        const detail = await openRecord(page, `NL-ROLE-${viewport.name}-${responseMode}`);
+        await expect(detail.locator('.record-meta')).toContainText('Version 2');
+        await expect(detail.locator('.history-list li')).toHaveCount(2);
+        await expect(page.getByLabel('Assigned to', { exact: true })).toHaveCount(0);
+        expect(await (await page.request.get(`/api/exceptions/${id}`)).json()).toEqual(saved);
+        expect(businessPosts).toBe(1);
+        await assertNoHorizontalOverflow(page);
+        await screenshot(page, `${viewport.name}-role-recovery-${responseMode}.png`);
+        await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+        expect(businessPosts).toBe(1);
+        assertBrowser();
+      } finally {
+        release();
+        roleFixture('promote-alex');
+        await page.unrouteAll({ behavior: 'wait' });
+      }
+    });
+  }
+}
+
+test('a matching operator session check preserves the same uncertain retry identity', async ({ page }) => {
+  loginAdmissionFixture('expire');
+  roleFixture('promote-alex');
+  const assertBrowser = observeBrowser(page, { expectedFailedRequest: /\/api\/exceptions\/[^/]+\/assign$/ });
+  await login(page);
+  const { id, session: beforeSession } = await createRoleRecoveryRecord(page, 'operator-retry');
+  const attempts: { key: string | undefined; body: string | null }[] = [];
+  await page.route(`**/api/exceptions/${id}/assign`, async route => {
+    const request = route.request();
+    attempts.push({ key: request.headers()['idempotency-key'], body: request.postData() });
+    if (attempts.length === 1) {
+      expect((await route.fetch()).status()).toBe(200);
+      await route.abort('failed');
+    } else await route.continue();
+  });
+  await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+  await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeEnabled();
+  const saved = await (await page.request.get(`/api/exceptions/${id}`)).json();
+  const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const current = await (await checked).json();
+  expect(current.session_context).toBe(beforeSession.session_context);
+  expect(current.user.role).toBe('operator');
+  await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toBeEnabled();
+  expect(attempts).toHaveLength(1);
+  await page.getByRole('button', { name: 'Retry same change', exact: true }).click();
+  await expect(page.getByText('Assignment saved.', { exact: true })).toBeVisible();
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toBeTruthy();
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(await (await page.request.get(`/api/exceptions/${id}`)).json()).toEqual(saved);
+  assertBrowser();
+});

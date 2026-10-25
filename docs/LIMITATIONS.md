@@ -64,6 +64,10 @@ practice or suitability for sensitive logistics data.
   committed, so the later denial does not establish its outcome. Permission
   refresh does not automatically retry a POST. There is no automatic role-change
   push, cross-device recovery or receipt browser.
+- A successful session check that learns reviewer access also retires a pending
+  or in-flight operator intent and its old response epoch. Reading, refresh and
+  sign-out remain available, with an earlier-commit warning. This happens after
+  the role change is observed and cannot cancel or undo a server transaction.
 - The expected session-context header is a consistency check, not authentication
   or permission. It remains optional for existing API clients. A matching marker
   does not mean that database role, organization or other principal facts are
@@ -112,7 +116,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.7.0 retains schema 4. The explicit transactional upgrade from schema
+- Version 0.7.1 retains schema 4. The explicit transactional upgrade from schema
   1, 2 or 3 preserves existing users as operators and gives future omitted roles
   a reviewer default. Stop application processes and privately back up the
   dedicated database before that upgrade. There is

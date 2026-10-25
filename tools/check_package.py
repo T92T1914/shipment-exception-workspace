@@ -6,7 +6,7 @@ import tarfile
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-wheel = root / "dist" / "shipment_exception_workspace-0.7.0-py3-none-any.whl"
+wheel = root / "dist" / "shipment_exception_workspace-0.7.1-py3-none-any.whl"
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
     required = ("shipment_workspace/static/index.html", "shipment_workspace/schema.sql", "shipment_workspace/migrate_v1_v2.sql",
@@ -23,9 +23,9 @@ with zipfile.ZipFile(wheel) as archive:
         assert "node_modules" not in name and not name.endswith((".env", ".log"))
         if name.startswith("shipment_workspace/") and name.endswith((".py", ".sql")):
             assert archive.read(name) == (root / "src" / name).read_bytes(), f"Stale wheel source: {name}"
-sdist = root / "dist" / "shipment_exception_workspace-0.7.0.tar.gz"
+sdist = root / "dist" / "shipment_exception_workspace-0.7.1.tar.gz"
 with tarfile.open(sdist) as archive:
     for version in (1, 2, 3):
-        fixture = f"shipment_exception_workspace-0.7.0/tests/fixtures/schema_v{version}.sql"
+        fixture = f"shipment_exception_workspace-0.7.1/tests/fixtures/schema_v{version}.sql"
         assert archive.extractfile(fixture).read() == (root / f"tests/fixtures/schema_v{version}.sql").read_bytes()
 print(f"Wheel contents and sdist migration fixture accepted. SHA256 {hashlib.sha256(wheel.read_bytes()).hexdigest()}")

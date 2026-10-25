@@ -57,6 +57,14 @@ permission refresh performs no automatic mutation retry. Other uncertain
 operator requests preserve their original key and body while their session
 context stays current.
 
+An authoritative session check can learn reviewer access before a pending
+operator request returns. Version 0.7.1 retires that local intent, its write
+drafts and old response epoch, then restores the current reviewer's reading and
+sign-out controls. A delayed completion cannot restore the retired view. The
+warning still says that the earlier change may already be saved. This is client
+recovery after an observed permission change, without a new authorization rule,
+automatic replay or cancellation of an admitted transaction.
+
 ## Shared session and client state
 
 The browser shares the HttpOnly session cookie across tabs. `session_context`
@@ -256,7 +264,7 @@ when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.7.0 retains schema version 4. For schema 1, 2 or 3, stop every
+Version 0.7.1 retains schema version 4. For schema 1, 2 or 3, stop every
 application process using the dedicated database and take a private backup before
 running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.
