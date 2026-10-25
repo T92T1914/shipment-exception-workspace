@@ -2064,7 +2064,13 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
     const assertBrowser = observeBrowser(page);
     await page.setViewportSize(viewport);
     const record = await prepareRefreshRecord(page, viewport.name === 'desktop' ? 'D' : 'N');
-    if (viewport.name === 'narrow') await page.addStyleTag({ content: ':root { font-size: 200%; }' });
+    if (viewport.name === 'narrow') {
+      // CSSOM changes only this isolated page. Verify actual text resizing
+      // without weakening the application's self-only style policy.
+      const original = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+      await page.evaluate(size => { document.documentElement.style.fontSize = `${size * 2}px`; }, original);
+      expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(original * 2);
+    }
     const barriers = await holdRefreshChecks(page);
     let businessPosts = 0;
     let dataReads = 0;
@@ -2106,26 +2112,49 @@ for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 
   });
 }
 
-test('explicit refresh joins a matching lifecycle check already in flight', async ({ page }) => {
-  const assertBrowser = observeBrowser(page);
+test('read-only denial cleanup joins an active check without retiring readable detail', async ({ page }) => {
+  const assertBrowser = observeBrowser(page, { expectedStatus: 403 });
   const record = await prepareRefreshRecord(page, 'J');
   const barriers = await holdRefreshChecks(page);
+  let releaseDenial!: () => void;
+  let denialArrived!: () => void;
+  const denialGate = new Promise<void>(resolve => { releaseDenial = resolve; });
+  const denied = new Promise<void>(resolve => { denialArrived = resolve; });
+  let businessPosts = 0;
+  await page.route(`**/api/exceptions/${record.id}/assign`, async route => {
+    businessPosts++;
+    const actual = await route.fetch();
+    expect(actual.status()).toBe(403);
+    expect((await actual.json()).error.code).toBe('read_only');
+    denialArrived(); await denialGate;
+    await route.fulfill({ response: actual });
+  });
   try {
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    roleFixture('demote-alex');
+    await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Sam Rivera' });
+    await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+    await denied;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await barriers.first;
-    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    const denialDelivered = page.waitForResponse(response => new URL(response.url()).pathname === `/api/exceptions/${record.id}/assign`);
+    releaseDenial(); await (await denialDelivered).finished();
+    await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
     barriers.releaseFirst();
     await barriers.second;
-    await expect(record.detail.locator('.record-meta')).toContainText('Version 1');
     const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
     barriers.releaseSecond();
     await (await delivered).finished();
+    await expect(page.getByRole('button', { name: 'Refresh workspace', exact: true })).toBeEnabled();
+    await expect(record.detail.locator('.detail-heading .reference')).toHaveText(record.reference);
+    await expect(page.getByRole('button', { name: 'Retry same change', exact: true })).toHaveCount(0);
+    expect(barriers.roles).toEqual(['reviewer', 'reviewer']);
+    expect(businessPosts).toBe(1);
+    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
     await expect(record.detail.locator('.record-meta')).toContainText('Version 2');
-    await expect(page.getByText('Showing the first queue page and the latest saved record. Review it before making another change.', { exact: true })).toBeVisible();
-    expect(barriers.count()).toBe(2);
     expect(await (await page.request.get(`/api/exceptions/${record.id}`)).json()).toEqual(record.saved);
+    expect(businessPosts).toBe(1);
     assertBrowser();
-  } finally { await barriers.close(); }
+  } finally { releaseDenial(); await barriers.close(); roleFixture('promote-alex'); }
 });
 
 test('explicit refresh uses trailing current reviewer access without a business replay', async ({ page }) => {
