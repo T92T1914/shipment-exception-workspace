@@ -1280,3 +1280,219 @@ test('a denied replay after an interrupted commit preserves honest read-only rec
     await page.unrouteAll({ behavior: 'wait' });
   }
 });
+
+function historyFixture(command: 'seed' | 'append') {
+  const python = process.env.WORKSPACE_FIXTURE_PYTHON;
+  if (!python || !process.env.WORKSPACE_HISTORY_FIXTURE_URL) {
+    throw new Error('The scoped history fixture environment must be set explicitly.');
+  }
+  const result = spawnSync(python, ['../tools/browser_history_fixture.py', command], {
+    cwd: process.cwd(), env: process.env, encoding: 'utf8', windowsHide: true,
+    timeout: 10_000, maxBuffer: 64 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`History fixture ${command} failed (exit ${result.status ?? 'unavailable'}).`);
+  }
+  let acknowledgement;
+  try { acknowledgement = JSON.parse(result.stdout.trim()); }
+  catch { throw new Error('History fixture did not return a valid acknowledgement.'); }
+  if (acknowledgement?.command !== command || acknowledgement?.ok !== true ||
+      acknowledgement?.id !== '00000000-0000-0000-0000-000000001fa5' ||
+      acknowledgement?.version !== (command === 'seed' ? 45 : 46)) {
+    throw new Error('History fixture did not confirm the requested synthetic history.');
+  }
+}
+
+async function historyVersions(page: Page) {
+  return page.locator('.history-list .history-meta').evaluateAll(elements => elements.map(element => {
+    const version = /^Version (\d+) \//.exec(element.textContent ?? '');
+    return version ? Number(version[1]) : -1;
+  }));
+}
+
+async function expectHistoryPage(page: Page, number: number, events: { version: number }[], throughVersion: number) {
+  const history = page.getByRole('region', { name: 'Change history', exact: true });
+  await expect(history.locator('.history-heading')).toContainText(`${events.length} on this page / Page ${number}`);
+  await expect(history.locator('.history-list li')).toHaveCount(events.length);
+  expect(await historyVersions(page)).toEqual(events.map(event => event.version));
+  await expect(history.locator('.history-boundary')).toContainText(`through version ${throughVersion}.`);
+  await expect(history.getByRole('navigation', { name: 'Change history pages', exact: true })).toContainText(`Page ${number}`);
+  return history;
+}
+
+for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 'narrow', width: 390, height: 844 }]) {
+  test(`${viewport.name} reviewer browses bounded history pages through a fixed version`, async ({ page }) => {
+    if (viewport.name === 'desktop') historyFixture('seed');
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const assertBrowser = observeBrowser(page);
+    let businessPosts = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+    });
+    await login(page, 'northline', 'reviewer');
+    await searchQueue(page, 'NL-HISTORY-001', 1);
+    const detail = await openRecord(page, 'NL-HISTORY-001');
+    const id = new URL(page.url()).hash.split('/')[1];
+    const firstResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(firstResponse.status()).toBe(200);
+    const first = await firstResponse.json();
+    expect(first.events).toHaveLength(20);
+    const ceiling = first.history.through_version;
+    const seen = [...first.events.map((event: { version: number }) => event.version)];
+    await expectHistoryPage(page, 1, first.events, ceiling);
+    await expect(page.getByRole('button', { name: 'Newer changes', exact: true })).toBeDisabled();
+    const secondResponse = await page.request.get(`/api/exceptions/${id}/history`, { params: { limit: 20, cursor: first.history.next_cursor } });
+    expect(secondResponse.status()).toBe(200);
+    const second = await secondResponse.json();
+    await page.getByRole('button', { name: 'Older changes', exact: true }).click();
+    await expectHistoryPage(page, 2, second.events, ceiling);
+    seen.push(...second.events.map((event: { version: number }) => event.version));
+    await expect(detail.locator('.record-meta')).toContainText(`Version ${first.exception.version}`);
+    if (viewport.name === 'desktop') historyFixture('append');
+    const thirdResponse = await page.request.get(`/api/exceptions/${id}/history`, { params: { limit: 20, cursor: second.next_cursor } });
+    expect(thirdResponse.status()).toBe(200);
+    const third = await thirdResponse.json();
+    await page.getByRole('button', { name: 'Older changes', exact: true }).click();
+    const history = await expectHistoryPage(page, 3, third.events, ceiling);
+    expect(third.through_version).toBe(ceiling);
+    seen.push(...third.events.map((event: { version: number }) => event.version));
+    expect(seen.length).toBe(ceiling);
+    expect([...seen].sort((a, b) => a - b)).toEqual(Array.from({ length: ceiling }, (_, index) => index + 1));
+    await expect(history.getByRole('button', { name: 'Older changes', exact: true })).toBeDisabled();
+    await assertNoHorizontalOverflow(page);
+    await screenshot(page, `${viewport.name}-history.png`);
+    await page.getByRole('button', { name: 'Newer changes', exact: true }).click();
+    await expectHistoryPage(page, 2, second.events, ceiling);
+    await page.getByRole('button', { name: 'Newer changes', exact: true }).click();
+    await expectHistoryPage(page, 1, first.events, ceiling);
+    await refreshWorkspaceAccess(page, 'reviewer');
+    const refreshedResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(refreshedResponse.status()).toBe(200);
+    const refreshed = await refreshedResponse.json();
+    await expectHistoryPage(page, 1, refreshed.events, refreshed.history.through_version);
+    expect(refreshed.history.through_version).toBe(46);
+    await expect(detail.locator('.record-meta')).toContainText('Version 46');
+    await expect(page.getByLabel('Assigned to', { exact: true })).toHaveCount(0);
+    await assertNoHorizontalOverflow(page);
+    expect(businessPosts).toBe(0);
+    assertBrowser();
+  });
+}
+
+test('history failure retries preserve the current record and draft, then a saved mutation resets history', async ({ page }) => {
+  const assertBrowser = observeBrowser(page, { expectedStatus: 503 });
+  await login(page);
+  await searchQueue(page, 'NL-HISTORY-001', 1);
+  const detail = await openRecord(page, 'NL-HISTORY-001');
+  const id = new URL(page.url()).hash.split('/')[1];
+  const beforeResponse = await page.request.get(`/api/exceptions/${id}`);
+  expect(beforeResponse.status()).toBe(200);
+  const before = await beforeResponse.json();
+  const draft = 'Draft retained while reading an older history page.';
+  await page.getByLabel('Resolution note', { exact: true }).fill(draft);
+  await page.getByLabel('Assigned to', { exact: true }).selectOption({ label: 'Alex Morgan' });
+  let attempts = 0;
+  const routePattern = `**/api/exceptions/${id}/history?**`;
+  await page.route(routePattern, async route => {
+    attempts++;
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'synthetic_unavailable', message: 'Synthetic history failure.' } }) });
+    } else { await route.continue(); }
+  });
+  try {
+    await page.getByRole('button', { name: 'Older changes', exact: true }).click();
+    const history = page.getByRole('region', { name: 'Change history', exact: true });
+    await expect(history.getByRole('alert')).toContainText('This history page could not be loaded.');
+    await expect(history.locator('.history-list li')).toHaveCount(0);
+    await expect(detail.locator('.record-meta')).toContainText(`Version ${before.exception.version}`);
+    await expect(page.getByLabel('Resolution note', { exact: true })).toHaveValue(draft);
+    await expect(page.getByLabel('Assigned to', { exact: true })).toHaveValue('00000000-0000-0000-0000-00000000000b');
+    const expectedResponse = await page.request.get(`/api/exceptions/${id}/history`, { params: { limit: 20, cursor: before.history.next_cursor } });
+    expect(expectedResponse.status()).toBe(200);
+    const expected = await expectedResponse.json();
+    await page.getByRole('button', { name: 'Retry history page', exact: true }).click();
+    await expectHistoryPage(page, 2, expected.events, expected.through_version);
+    await expect(page.getByLabel('Resolution note', { exact: true })).toHaveValue(draft);
+    await expect(page.getByRole('button', { name: 'Save assignment', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Save assignment', exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Assignment saved.');
+    const savedResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(savedResponse.status()).toBe(200);
+    const saved = await savedResponse.json();
+    expect(saved.exception.version).toBe(before.exception.version + 1);
+    await expectHistoryPage(page, 1, saved.events, saved.exception.version);
+    await expect(detail.locator('.record-meta')).toContainText(`Version ${saved.exception.version}`);
+    expect(saved.events.at(-1).action).toBe('assigned');
+    expect(attempts).toBe(2);
+    assertBrowser();
+  } finally { await page.unrouteAll({ behavior: 'wait' }); }
+});
+
+test('delayed history is retired by record changes, refresh and logout', async ({ page }) => {
+  const assertBrowser = observeBrowser(page);
+  await login(page, 'northline', 'reviewer');
+  await searchQueue(page, 'NL-HISTORY-001', 1);
+  await openRecord(page, 'NL-HISTORY-001');
+  const id = new URL(page.url()).hash.split('/')[1];
+  const pattern = `**/api/exceptions/${id}/history?**`;
+  async function delayOlderPage() {
+    let release!: () => void;
+    let acknowledge!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const arrived = new Promise<void>(resolve => { acknowledge = resolve; });
+    await page.route(pattern, async route => {
+      const actual = await route.fetch();
+      expect(actual.status()).toBe(200);
+      acknowledge();
+      await gate;
+      await route.fulfill({ response: actual });
+    }, { times: 1 });
+    await page.getByRole('button', { name: 'Older changes', exact: true }).click();
+    await arrived;
+    let finished: Promise<void> | undefined;
+    return () => {
+      finished ??= (async () => {
+        const response = page.waitForResponse(value => new URL(value.url()).pathname === `/api/exceptions/${id}/history`);
+        release();
+        await (await response).finished();
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      })();
+      return finished;
+    };
+  }
+  let release = await delayOlderPage();
+  try {
+    await page.evaluate(() => { window.location.hash = 'exception/00000000-0000-0000-0000-000000000066'; });
+    const detail = page.getByRole('region', { name: 'Exception detail', exact: true });
+    await expect(detail.locator('.detail-heading .reference')).toHaveText('NL-1086');
+    const otherResponse = await page.request.get('/api/exceptions/00000000-0000-0000-0000-000000000066');
+    expect(otherResponse.status()).toBe(200);
+    const other = await otherResponse.json();
+    await release();
+    await expectHistoryPage(page, 1, other.events, other.exception.version);
+    await page.evaluate(record => { window.location.hash = `exception/${record}`; }, id);
+    await expect(detail.locator('.detail-heading .reference')).toHaveText('NL-HISTORY-001');
+    release = await delayOlderPage();
+    await refreshWorkspaceAccess(page, 'reviewer');
+    const latestResponse = await page.request.get(`/api/exceptions/${id}`);
+    expect(latestResponse.status()).toBe(200);
+    const latest = await latestResponse.json();
+    await expectHistoryPage(page, 1, latest.events, latest.exception.version);
+    await release();
+    await expectHistoryPage(page, 1, latest.events, latest.exception.version);
+    release = await delayOlderPage();
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Sign in to the workspace', exact: true })).toBeVisible();
+    await release();
+    await expect(page.getByRole('region', { name: 'Change history', exact: true })).toHaveCount(0);
+    await login(page, 'harbor', 'reviewer');
+    await openRecord(page, 'HS-2057');
+    await expect(detail.locator('.detail-heading .reference')).toHaveText('HS-2057');
+    expect(await historyVersions(page)).not.toContain(47);
+    await expect(page.locator('.workspace')).not.toContainText('History paging synthetic review');
+    assertBrowser();
+  } finally {
+    await release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});

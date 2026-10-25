@@ -15,7 +15,10 @@ type AuditEvent = {
   id: string; action: 'created' | 'assigned' | 'resolved'; actor_name: string;
   assignee_name: string | null; note: string | null; version: number; created_at: string;
 };
-type Detail = { exception: ShipmentException; events: AuditEvent[] };
+type HistoryMetadata = { next_cursor: string | null; page_size: number; through_version: number };
+type HistoryPage = HistoryMetadata & { events: AuditEvent[] };
+type Detail = { exception: ShipmentException; events: AuditEvent[]; history: HistoryMetadata };
+type HistoryView = { id: string; cursors: (string | null)[]; index: number; throughVersion: number };
 type QueueStatus = 'all' | 'open' | 'resolved';
 type QueueRequest = { status: QueueStatus; q: string; cursors: (string | null)[]; index: number };
 type QueuePage = { items: ShipmentException[]; next_cursor: string | null; page_size: number };
@@ -110,6 +113,15 @@ function dateLabel(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function readableHistory(page: HistoryPage, throughVersion?: number): boolean {
+  return !!page && Array.isArray(page.events) && page.events.length <= 20 && page.page_size === 20 &&
+    Number.isInteger(page.through_version) && page.through_version >= 1 &&
+    (throughVersion === undefined || page.through_version === throughVersion) &&
+    (page.next_cursor === null || (typeof page.next_cursor === 'string' && !!page.next_cursor && page.next_cursor.length <= 1024)) &&
+    page.events.every((event, index, events) => !!event && Number.isInteger(event.version) && event.version >= 1 &&
+      event.version <= page.through_version && (index === 0 || events[index - 1].version < event.version));
+}
+
 function Status({ item }: { item: ShipmentException }) {
   return <span className={`status status-${item.status}`}>{item.status === 'resolved' ? 'Resolved' : 'Open'}</span>;
 }
@@ -125,6 +137,10 @@ function App() {
   const [creating, setCreating] = useState(window.location.hash === '#new');
   const [createFields, setCreateFields] = useState<CreateFields>({ ...emptyCreateFields });
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [historyPage, setHistoryPage] = useState<HistoryPage | null>(null);
+  const [historyView, setHistoryView] = useState<HistoryView | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [assignment, setAssignment] = useState('');
   const [resolution, setResolution] = useState('');
   const [queue, setQueue] = useState<QueueRequest>(firstQueuePage);
@@ -146,11 +162,21 @@ function App() {
   const accessRequest = useRef(0);
   const listRequest = useRef(0);
   const detailRequest = useRef(0);
+  const historyRequest = useRef(0);
+  const historyRef = useRef<HistoryView | null>(null);
+  const firstHistoryPage = useRef<HistoryPage | null>(null);
+  const historyBusy = useRef(false);
   const queueRef = useRef(queue);
   const queueBusy = useRef(false);
   activeUser.current = session?.user?.id ?? null;
   activeRole.current = session?.user?.role;
   const canMutate = session?.user?.role === 'operator';
+
+  const clearHistory = useCallback(() => {
+    historyRequest.current++;
+    historyRef.current = null; firstHistoryPage.current = null; historyBusy.current = false;
+    setHistoryView(null); setHistoryPage(null); setHistoryError(''); setHistoryLoading(false);
+  }, []);
 
   const clearPrivateState = useCallback(() => {
     listRequest.current++; detailRequest.current++; accessRequest.current++;
@@ -162,7 +188,8 @@ function App() {
     setNextCursor(null); setQueueError(''); setQueueLoading(false);
     setCreating(false); setCreateFields({ ...emptyCreateFields });
     setPending(null); pendingRef.current = null;
-  }, []);
+    clearHistory();
+  }, [clearHistory]);
 
   const refreshAccess = useCallback(async (user: string | null) => {
     const generation = ++accessRequest.current;
@@ -220,12 +247,31 @@ function App() {
     if (selectedFromHash() !== id) return;
     const generation = ++detailRequest.current;
     const user = activeUser.current;
-    const result = await request<Detail>(`/api/exceptions/${encodeURIComponent(id)}`, { signal });
-    if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id) {
-      setDetail(result); setAssignment(result.exception.assignee_id ?? '');
+    clearHistory();
+    setHistoryLoading(true);
+    try {
+      const result = await request<Detail>(`/api/exceptions/${encodeURIComponent(id)}`, { signal });
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id) {
+        const first = { ...result.history, events: result.events };
+        if (!readableHistory(first) || first.through_version !== result.exception.version) {
+          throw new ApiError(0, 'unreadable_history', 'The change history could not be read. Refresh the workspace to try again.');
+        }
+        setDetail(result); setAssignment(result.exception.assignee_id ?? '');
+        const view = { id, cursors: [null], index: 0, throughVersion: first.through_version };
+        historyRef.current = view; firstHistoryPage.current = first;
+        setHistoryView(view); setHistoryPage(first);
+      }
+      return result;
+    } catch (failure) {
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id &&
+          !(failure instanceof DOMException && failure.name === 'AbortError')) {
+        setHistoryError('The latest history could not be loaded. Refresh the workspace to try again.');
+      }
+      throw failure;
+    } finally {
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id) setHistoryLoading(false);
     }
-    return result;
-  }, []);
+  }, [clearHistory]);
 
   const handleError = useCallback(async (failure: unknown) => {
     if (failure instanceof DOMException && failure.name === 'AbortError') return;
@@ -261,6 +307,7 @@ function App() {
 
   useEffect(() => {
     const onHash = () => {
+      clearHistory();
       setSelectedId(selectedFromHash());
       setCreating(window.location.hash === '#new');
       if (!pendingRef.current && activeRole.current === 'operator') setError('');
@@ -268,7 +315,7 @@ function App() {
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  }, [clearHistory]);
 
   useEffect(() => {
     if (session?.authenticated && !canMutate && creating) {
@@ -290,13 +337,14 @@ function App() {
 
   useEffect(() => {
     setDetail(null); setResolution(''); setConflict(false);
+    clearHistory();
     if (!session?.authenticated || !selectedId) return;
     const controller = new AbortController();
     setDetailLoading(true);
     loadDetail(selectedId, controller.signal).catch(handleError)
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [session?.authenticated, selectedId, loadDetail, handleError]);
+  }, [session?.authenticated, selectedId, loadDetail, handleError, clearHistory]);
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
@@ -389,6 +437,50 @@ function App() {
     const view = queueRef.current;
     if (queueBusy.current || view.index === 0) return;
     void browseQueue({ ...view, index: view.index - 1 });
+  }
+
+  async function browseHistory(view: HistoryView) {
+    if (busy || pendingRef.current || historyBusy.current || selectedFromHash() !== view.id) return;
+    const generation = ++historyRequest.current;
+    const recordGeneration = detailRequest.current;
+    const user = activeUser.current;
+    const current = () => generation === historyRequest.current && recordGeneration === detailRequest.current &&
+      user === activeUser.current && selectedFromHash() === view.id && historyRef.current === view;
+    historyRef.current = view; historyBusy.current = true;
+    setHistoryView(view); setHistoryPage(null); setHistoryError(''); setHistoryLoading(true);
+    try {
+      // Keep just the first bounded page for returning to this browse's ceiling.
+      // A fresh no-cursor GET would instead start at a newer record version.
+      const page = view.index === 0 ? firstHistoryPage.current : await request<HistoryPage>(
+        `/api/exceptions/${encodeURIComponent(view.id)}/history?${new URLSearchParams({ limit: '20', cursor: view.cursors[view.index]! })}`,
+      );
+      if (!current()) return;
+      if (!page || !readableHistory(page, view.throughVersion)) {
+        throw new ApiError(0, 'unreadable_history', 'The change history response could not be read.');
+      }
+      setHistoryPage(page);
+    } catch (failure) {
+      if (!current()) return;
+      if (failure instanceof ApiError && failure.status === 401) {
+        await handleError(failure);
+      } else {
+        setHistoryError('This history page could not be loaded. Retry the page or refresh the latest changes.');
+      }
+    } finally {
+      if (current()) { historyBusy.current = false; setHistoryLoading(false); }
+    }
+  }
+
+  function olderChanges() {
+    const view = historyRef.current;
+    if (!view || !historyPage?.next_cursor) return;
+    void browseHistory({ ...view, cursors: [...view.cursors.slice(0, view.index + 1), historyPage.next_cursor], index: view.index + 1 });
+  }
+
+  function newerChanges() {
+    const view = historyRef.current;
+    if (!view || view.index === 0) return;
+    void browseHistory({ ...view, index: view.index - 1 });
   }
 
   async function sendChange(intent: ChangeIntent | PendingChange) {
@@ -496,7 +588,7 @@ function App() {
 
   const locked = busy || !!pending || conflict || !canMutate;
   const current = detail?.exception;
-  const events = detail?.events ?? [];
+  const events = historyPage?.events ?? [];
   const loginBlocked = loginWait !== null && loginWait.seconds > 0;
   const selectedOutsidePage = !!current && !queueLoading && !queueError && !items.some(item => item.id === current.id);
 
@@ -563,7 +655,12 @@ function App() {
             <div className="action-grid"><section className="action-card" aria-labelledby="assignment-title"><p className="eyebrow">Ownership</p><h3 id="assignment-title">{canMutate ? 'Assign a teammate' : 'Current ownership'}</h3><p className="muted">Current owner: <strong>{current.assignee_name ?? 'Unassigned'}</strong></p>{canMutate && <form onSubmit={assign}><label htmlFor="assignee">Assigned to</label><select id="assignee" value={assignment} onChange={event => setAssignment(event.target.value)} disabled={locked || current.status === 'resolved'}><option value="">Unassigned</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select><button className="button secondary" type="submit" disabled={locked || current.status === 'resolved' || assignment === (current.assignee_id ?? '')}>Save assignment</button></form>}</section>
               <section className="action-card" aria-labelledby="resolution-title"><p className="eyebrow">Outcome</p><h3 id="resolution-title">{current.status === 'resolved' ? 'Resolution recorded' : canMutate ? 'Resolve exception' : 'Resolution'}</h3>{current.status === 'resolved' ? <><p className="resolution-text">{current.resolution}</p><p className="muted small-print">This record is resolved. Its history remains available below.</p></> : canMutate ? <form onSubmit={resolve}><label htmlFor="resolution">Resolution note</label><textarea id="resolution" rows={4} placeholder="Describe what changed and the next handoff." value={resolution} onChange={event => setResolution(event.target.value)} maxLength={2000} required disabled={locked} /><span className="character-count">{resolution.length} / 2000</span><button className="button primary" type="submit" disabled={locked || !resolution.trim()}>Confirm resolution</button></form> : <p className="muted">Only operators can record a resolution.</p>}</section>
             </div>
-            <section className="history" aria-labelledby="history-title"><div className="history-heading"><h3 id="history-title">Change history</h3><span>{events.length} saved {events.length === 1 ? 'change' : 'changes'}</span></div>{events.length === 0 ? <p className="muted">No changes recorded yet. The seeded record starts at version {current.version}.</p> : <ol className="history-list">{events.map(event => <li key={event.id}><span className="history-dot" aria-hidden="true" /><div><p><strong>{event.actor_name}</strong> {event.action === 'created' ? 'created the exception' : event.action === 'resolved' ? 'resolved the exception' : event.assignee_name ? `assigned ${event.assignee_name}` : 'removed the assignment'}</p>{event.note && <p className="history-note">{event.note}</p>}<p className="history-meta">Version {event.version} / {dateLabel(event.created_at)}</p></div></li>)}</ol>}</section>
+            <section className="history" aria-labelledby="history-title">
+              <div className="history-heading"><h3 id="history-title">Change history</h3><span aria-live="polite">{historyLoading ? `Loading page ${(historyView?.index ?? 0) + 1}` : historyError ? 'Page unavailable' : `${events.length} on this page / Page ${(historyView?.index ?? 0) + 1}`}</span></div>
+              {historyError ? <div className="history-error" role="alert"><p>{historyError}</p><div><button className="button secondary" type="button" onClick={() => { if (historyRef.current) void browseHistory(historyRef.current); }} disabled={busy || !!pending || historyLoading || !historyView}>Retry history page</button><button className="button secondary" type="button" onClick={() => void refreshCurrent()} disabled={busy || !!pending}>Refresh latest changes</button></div></div> : historyLoading ? <p className="muted" role="status">Loading change history...</p> : events.length === 0 ? <p className="muted">No changes recorded on this page. Seeded records may start without an earlier event.</p> : <ol className="history-list">{events.map(event => <li key={event.id}><span className="history-dot" aria-hidden="true" /><div><p><strong>{event.actor_name}</strong> {event.action === 'created' ? 'created the exception' : event.action === 'resolved' ? 'resolved the exception' : event.assignee_name ? `assigned ${event.assignee_name}` : 'removed the assignment'}</p>{event.note && <p className="history-note">{event.note}</p>}<p className="history-meta">Version {event.version} / {dateLabel(event.created_at)}</p></div></li>)}</ol>}
+              <nav className="history-pages" aria-label="Change history pages"><button className="button secondary" type="button" onClick={newerChanges} disabled={busy || !!pending || historyLoading || !historyView || historyView.index === 0}>Newer changes</button><span>Page {(historyView?.index ?? 0) + 1}</span><button className="button secondary" type="button" onClick={olderChanges} disabled={busy || !!pending || historyLoading || !!historyError || !historyPage?.next_cursor}>Older changes</button></nav>
+              <p className="history-boundary">Browsing changes through version {historyView?.throughVersion ?? current.version}. Refresh the workspace to include newer changes. Each page lists its changes from oldest to newest.</p>
+            </section>
           </>}
         </section>
       </div>

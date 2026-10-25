@@ -155,6 +155,86 @@ requests. Revisited pages can therefore contain different records. Explicit
 does not bound database scanning, sorting or latency. This release adds no index
 and claims no measured speed, query-plan improvement or production capacity.
 
+## Bounded change history
+
+The record detail route, `GET /api/exceptions/{id}`, returns the current
+`exception`, its latest 20 `events`, and `history` metadata containing
+`next_cursor`, `page_size` and `through_version`. It no longer materializes the
+complete event list. `GET /api/exceptions/{id}/history` accepts `limit` and an
+optional `cursor`, returning `events`, `next_cursor`, `page_size` and
+`through_version`. The default limit is 20 and the maximum is 50. Events retain
+ascending version order within each returned page, including short histories.
+The first page contains the latest changes, and continuation moves to older
+ones.
+
+Both routes authenticate the session and resolve the exception within its
+current organization before querying history. Operators and reviewers can read
+their own records. Missing and foreign records receive the same 404 before
+history-query validation. The event query independently uses that organization
+and exception ID. A history cursor cannot replace these access checks.
+
+The initial record read supplies `through_version`. SQL restricts events to that
+version or lower, orders by version descending and fetches `limit + 1` rows.
+The extra row decides whether another page exists. The selected `limit` rows
+are reversed for ascending presentation. The existing
+`UNIQUE(exception_id, version)` constraint supplies the unique order. An older
+page adds `version < before_version` and retains the original upper fence.
+It does not use OFFSET, calculate a total or require an anchor row lookup.
+PostgreSQL documents the need for a predictable
+[order with LIMIT](https://www.postgresql.org/docs/18/queries-limit.html).
+
+For example, a 45-change record initially returns versions 26 through 45.
+Its next page returns 6 through 25, then 1 through 5. If version 46 is saved
+between requests, those older pages keep the original boundary of 45. Explicit
+refresh starts a new browse through 46. The same fence also excludes a change
+committed after the initial detail record read but before its history query.
+This is an append boundary at ordinary READ COMMITTED isolation, not a full
+database snapshot. Joined actor and assignee names are read from current user
+rows. Privileged edits to existing events remain outside the application policy.
+
+History cursors use canonical unpadded base64url for a strict UTF-8 JSON object,
+with at most 1,024 characters. The exact fields are `v`, `organization_id`,
+`exception_id`, `limit`, `through_version` and `before_version`. `v` is the strict
+integer 1, the limit is a strict integer from 1 through 50, and both version
+positions are strict integers from 1 through 2,147,483,647. The earlier position
+cannot exceed its fence. Organization, exception and page size must match the
+current request, and the fence cannot exceed the current record version.
+Unknown or duplicate query parameters, malformed encoding, duplicate JSON keys,
+extra fields, invalid types and invalid relationships produce generic HTTP 422
+`invalid_history_query` without echoing submitted values. Canonical transport
+checks the base64url spelling, not a JSON signature or canonical JSON format.
+
+A cursor is unsigned and readable. A caller may construct a different valid
+position within its own history or skip rows. That does not select another
+organization's events, authenticate a user or establish a durable bookmark.
+Every remote request retains the current session/object checks. This is a
+bounded application interface, not a cryptographically sealed audit trail.
+
+The UI shows one 20-event page with **Older changes** and **Newer changes**,
+the page count and its version boundary. Each page lists changes from oldest to
+newest. Current details and editing drafts stay separate from older history.
+The browser retains the first bounded page for returning to the same fence,
+the current bounded page, and cursor positions for visited pages. It does not
+accumulate event pages in the rendered list. Cursor metadata can still grow with
+the number of visited pages. Nothing is persisted to browser storage.
+
+History responses are associated with the user, selected record, detail
+generation and history view. Record selection, refresh, saved mutation and
+private-state clearing retire earlier history work. An older-page failure
+clears that page's list and offers **Retry history page** or **Refresh latest
+changes**, without replacing current details or an unsent editing draft.
+Authentication failure follows the existing session-ending path. Refresh starts
+at the latest history and clears the old browse. Returning to the first page
+within a browse uses its cached page rather than silently moving the fence.
+That cache is not a new permission check or an instantaneous revocation promise.
+
+The output cap addresses the
+[OWASP API4 records-per-response concern](https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption/).
+It does not prove a database scan, latency, rate or load bound. No new index,
+query-plan measurement, broad denial-of-service protection or production
+capacity is claimed. Empty seeded histories remain empty rather than acquiring
+invented creation events.
+
 ## Durable login admission
 
 `POST /api/login` reserves permission to perform a password verification before
@@ -332,6 +412,9 @@ and frame-denial headers. These are specific defensive
 boundaries, not a claim of complete application security.
 
 ## Durable state and packaging
+
+Version 0.6.0 adds bounded history without changing schema 4 or requiring a new
+migration for an existing schema 4 database.
 
 The database contains organizations, users, sessions, exceptions, audit events,
 mutation receipts and login-admission counters. Initialization creates schema

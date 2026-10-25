@@ -23,6 +23,7 @@ from .config import Settings
 from .db import PASSWORDS, connect, exception_record, require_current_schema
 from .login_admission import reserve_login
 from .queue_browsing import InvalidQueueQuery, page_for
+from .history_browsing import InvalidHistoryQuery, page_for as history_page_for
 
 COOKIE = "shipment_session"
 MAX_BODY = 16384
@@ -253,10 +254,19 @@ def create_app(settings: Settings):
         record = exception_record(conn, current["organization_id"], exception_id)
         if not record:
             raise Problem(404, "not_found", "Exception not found.")
-        events = conn.execute("""SELECT e.id,e.action,a.name AS actor_name,u.name AS assignee_name,e.note,e.version,e.created_at
-            FROM exception_events e JOIN users a ON a.id=e.actor_id LEFT JOIN users u ON u.id=e.assignee_id
-            WHERE e.organization_id=%s AND e.exception_id=%s ORDER BY e.version""", (current["organization_id"], exception_id)).fetchall()
-        return {"exception": record, "events": events}
+        page = history_page_for(conn, current["organization_id"], exception_id, record["version"])
+        return {"exception": record, "events": page["events"],
+                "history": {key: page[key] for key in ("next_cursor", "page_size", "through_version")}}
+
+    @app.get("/api/exceptions/{exception_id}/history")
+    def history(exception_id: UUID, request: Request, current=Depends(principal), conn=Depends(connection)):
+        record = exception_record(conn, current["organization_id"], exception_id)
+        if not record:
+            raise Problem(404, "not_found", "Exception not found.")
+        try:
+            return history_page_for(conn, current["organization_id"], exception_id, record["version"], request.query_params)
+        except InvalidHistoryQuery:
+            raise Problem(422, "invalid_history_query", "Check the history page parameters.")
 
     def prepare_intent(canonical, request, current, key):
         csrf(request, current)

@@ -110,6 +110,22 @@ def main():
             created = client.post("/api/exceptions", json=create_body, headers=create_headers)
             assert created.status_code == 201, created.text
             created_id = created.json()["exception"]["id"]
+            history_path = f"/api/exceptions/{created_id}/history"
+            # These are real accepted mutations, not fabricated legacy events.
+            # They exercise the original detail cap and more than two pages.
+            for version in range(1, 45):
+                saved = client.post(f"/api/exceptions/{created_id}/assign",
+                                    json={"expected_version": version,
+                                          "assignee_id": session.json()["user"]["id"] if version % 2 else None},
+                                    headers={**headers, "Idempotency-Key": str(uuid4())})
+                assert saved.status_code == 200 and saved.json()["exception"]["version"] == version + 1
+            history_detail = client.get(f"/api/exceptions/{created_id}").json()
+            assert history_detail["exception"]["version"] == 45
+            assert [event["version"] for event in history_detail["events"]] == list(range(26, 46))
+            assert history_detail["history"]["page_size"] == 20
+            assert history_detail["history"]["through_version"] == 45
+            history_cursor = history_detail["history"]["next_cursor"]
+            assert history_cursor
             reviewer_csrf = reviewer.get("/api/session").json()["csrf_token"]
             review_session = reviewer.post("/api/login", json={"email": "taylor@harbor.example", "password": password},
                                            headers={"Origin": base, "X-CSRF-Token": reviewer_csrf})
@@ -124,7 +140,11 @@ def main():
             def review_without_writes():
                 assert reviewer.get("/api/session").json()["user"]["role"] == "reviewer"
                 own = reviewer.get(f"/api/exceptions/{created_id}")
-                assert own.status_code == 200 and own.json()["events"][0]["action"] == "created"
+                assert own.status_code == 200 and len(own.json()["events"]) == 20
+                assert own.json()["history"]["through_version"] == 45
+                older = reviewer.get(history_path, params={"cursor": history_cursor})
+                assert older.status_code == 200 and older.json()["through_version"] == 45
+                assert [event["version"] for event in older.json()["events"]] == list(range(6, 26))
                 assert reviewer.get("/api/exceptions", params=queue_params).status_code == 200
                 assert reviewer.get("/api/members").status_code == 200
                 before = business_rows()
@@ -159,6 +179,25 @@ def main():
                 after_admission = conn.execute("SELECT attempts,reset_at FROM login_global").fetchall(), conn.execute("SELECT * FROM login_identifiers ORDER BY identifier_hash").fetchall()
             assert after_admission == before_admission
             review_without_writes()
+            older_history = client.get(history_path, params={"cursor": history_cursor}).json()
+            assert [event["version"] for event in older_history["events"]] == list(range(6, 26))
+            assert older_history["page_size"] == 20 and older_history["through_version"] == 45
+            oldest_history = client.get(history_path, params={"cursor": older_history["next_cursor"]}).json()
+            assert [event["version"] for event in oldest_history["events"]] == list(range(1, 6))
+            assert oldest_history["next_cursor"] is None and oldest_history["through_version"] == 45
+            history_events = [*oldest_history["events"], *older_history["events"], *history_detail["events"]]
+            assert [event["version"] for event in history_events] == list(range(1, 46))
+            assert len({event["id"] for event in history_events}) == 45
+            assert sum(event["action"] == "created" for event in history_events) == 1
+            appended = client.post(f"/api/exceptions/{created_id}/assign",
+                                   json={"expected_version": 45, "assignee_id": None},
+                                   headers={**headers, "Idempotency-Key": str(uuid4())})
+            assert appended.status_code == 200 and appended.json()["exception"]["version"] == 46
+            fenced = client.get(history_path, params={"cursor": history_cursor}).json()
+            assert fenced == older_history
+            refreshed = client.get(f"/api/exceptions/{created_id}").json()
+            assert refreshed["history"]["through_version"] == 46
+            assert [event["version"] for event in refreshed["events"]] == list(range(27, 47))
             second_page = client.get("/api/exceptions", params={**queue_params, "cursor": first_page["next_cursor"]}).json()
             assert len(second_page["items"]) == 1 and second_page["items"][0]["reference"] == "HS-2073"
             assert second_page["next_cursor"]
@@ -175,8 +214,12 @@ def main():
             assert creation_replay.status_code == 201 and creation_replay.json() == created.json()
             assert creation_replay.headers["idempotency-replayed"] == "true"
             creation_detail = client.get(f"/api/exceptions/{created_id}").json()
-            assert creation_detail["exception"]["version"] == 1
-            assert [event["action"] for event in creation_detail["events"]] == ["created"]
+            assert creation_detail["exception"]["version"] == 46
+            assert creation_detail["history"]["through_version"] == 46
+            assert len(creation_detail["events"]) == 20
+            # The old creation receipt still describes version1. It is never
+            # presented as this record's current version or complete history.
+            assert creation_replay.json()["exception"]["version"] == 1
         # Browser journeys are a separate synthetic campaign. Expire only this
         # disposable consumer's admission fixtures, preserving sessions/history.
         with psycopg.connect(database_url) as conn:
@@ -193,8 +236,11 @@ def main():
              "correct_password_throttled_at_global_limit": True,
              "admission_fixture_expired_before_browser_campaign": True,
              "queue_cursor_survived_restart": True, "bounded_queue_traversal": True,
-             "reviewer_read_and_business_write_denial_survived_restart": True}, indent=2), encoding="utf-8")
-        print("Installed wheel, UI, API restart, durable retry, admission, queue pages and reviewer access accepted.")
+             "reviewer_read_and_business_write_denial_survived_restart": True,
+             "bounded_detail_and_history_cursor_survived_restart": True,
+             "complete_three_page_history_without_duplicates": True,
+             "history_append_fenced_until_refresh": True}, indent=2), encoding="utf-8")
+        print("Installed wheel, UI, API restart, durable retry, admission, queue pages, reviewer access and bounded history accepted.")
         if args.keep_server:
             server = None
     finally:
