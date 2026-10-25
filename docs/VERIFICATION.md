@@ -127,6 +127,21 @@ native/API/guide/UI proof passed on another new source and target. Earlier
 positive and failed state remains separate. This is review-driven correction,
 not an observed overwrite or a native restore success claimed for the failure.
 
+The first hosted branch run at cb41a72ad5ea498ffb65ff0099d24b82fe067e65
+then had 270 passes and one guard-test failure. Its Docker-forwarded connection
+reported a different server endpoint, so the unchanged strict guard refused
+before reaching the test's expected same-database message. Installed consumer
+and browser steps were skipped in that failed run. The corrected test reads
+the actual server endpoint independently and requires the precise applicable
+refusal: differing effective endpoint for forwarding, or same database for a
+direct matching endpoint. It skips neither topology and does not relax the
+guard. The direct Windows native proof remains the earlier executed result,
+with unchanged native helpers and guide recipe. Fresh final-head hosted results
+are separate from that local proof and from the failed hosted candidate.
+The corrected eight guard cases also passed locally against another new
+direct-loopback disposable database, including the exact same-database message.
+Only this task's cluster was briefly resumed for those cases and stopped again.
+
 ## Publication and limits
 
 The ordinary Linux workflow independently builds/checks the final source and

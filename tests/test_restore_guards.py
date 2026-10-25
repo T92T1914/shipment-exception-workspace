@@ -1,5 +1,6 @@
 """Connection/empty-state admission uses actual PostgreSQL for database guards."""
 import pytest
+import psycopg
 from psycopg.conninfo import make_conninfo
 
 from tools.local_restore import Refused, empty_database, guard_restore, parameters
@@ -17,13 +18,22 @@ def test_restore_requires_explicit_bounded_endpoint(url):
         parameters(url, 5432)
 
 
-def test_same_effective_database_with_uri_and_keyword_forms_is_refused(database):
+def test_connection_alias_is_refused_at_actual_identity_preflight(database):
     from psycopg.conninfo import conninfo_to_dict
     port = int(conninfo_to_dict(database)["port"])
     source = parameters(database, port)
     alias = parameters(make_conninfo(**source), port)
-    with pytest.raises(Refused, match="same database"):
+    assert alias == source
+    # Hosted CI reaches its service through Docker port forwarding. The direct
+    # loopback route must reject that different server endpoint first, while a
+    # directly hosted database reaches the later same-database refusal.
+    with psycopg.connect(database) as conn:
+        effective = conn.execute("SELECT host(inet_server_addr()), inet_server_port()").fetchone()
+    reason = ("Source and target resolve to the same database" if effective == (source["host"], port)
+              else "Effective endpoint differs from the explicit record")
+    with pytest.raises(Refused) as refusal:
         guard_restore(source, alias)
+    assert str(refusal.value) == reason
 
 
 def test_application_tables_make_a_nonempty_restore_target(database):

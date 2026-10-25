@@ -80,6 +80,10 @@ defaults. Never print the connection value. The target name below is a new,
 simple database identifier owned by that same role. An existing name causes
 creation to fail; do not drop it to make the recipe pass.
 
+This direct loopback recipe also refuses a forwarded connection when the
+server's reported address or port differs from that explicit endpoint. Docker
+port mapping, tunnels and proxy endpoints are outside the qualified route.
+
 ```powershell
 @'
 import json, os
