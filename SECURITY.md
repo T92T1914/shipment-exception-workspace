@@ -54,7 +54,54 @@ intent and conservatively switches it to read-only access. An earlier
 interrupted attempt may already be saved, so that denial is not proof of an
 earlier failure. Current records remain available for manual inspection, and
 permission refresh performs no automatic mutation retry. Other uncertain
-operator requests preserve their original key and body.
+operator requests preserve their original key and body while their session
+context stays current.
+
+## Shared session and client state
+
+The browser shares the HttpOnly session cookie across tabs. `session_context`
+in login/session responses is separate, non-authorizing consistency metadata:
+a domain-separated SHA-256 digest derived from the stored session token hash.
+It is neither the bearer cookie, that stored hash nor the CSRF token. The server
+accepts it only as an expected-context comparison, never as identity or permission.
+It is stable for a session across API restart and rotates on login, including
+same-actor login. A matching marker does not establish unchanged database role,
+organization or permission.
+
+If supplied, `X-Workspace-Context` must have exactly one parsed value of 64
+lowercase hexadecimal characters matching the current cookie session. Invalid,
+duplicate or stale values receive generic 409 `session_changed` without value
+echoes. Protected routes still authenticate first, returning 401 for an absent
+or expired session. Their comparison precedes private route results and business
+receipt access/writes. Login checks its supplied context before CSRF/admission.
+`GET /api/session` ignores it and supplies actual recovery state. Header omission
+keeps existing API clients compatible. Current cookie, Origin/CSRF, organization
+and operator checks remain independent authorities.
+
+The UI attaches its expected context and retires stale response generations
+after session changes. Session reconciliation compares actor and organization
+relationships as well as the marker and obtains role from the current server
+response. Reusing a marker does not preserve an old user's database privileges.
+Private caches and drafts remain in memory and are cleared after an observed
+transition. If a pending write is retired, its earlier attempt may already have
+committed. The UI preserves that uncertainty and performs no automatic business
+POST or replay under the next account.
+
+Cross-tab notification uses only `{ v: 1, type: 'session-changed' }` on the named
+same-origin channel. It includes no session marker, credential, identity, role,
+organization or shipment data. A valid hint retires private state and requests
+actual session state, rather than trusting a message to supply an identity.
+Rechecks are coalesced, with focus, visible-page and persisted-page restoration
+checks supporting recovery when a channel is absent or a hint is missed. Channel
+creation/send failures are tolerated. A failed server check has an explicit
+recovery action rather than an unconfirmed private workspace.
+
+This is client/session coherence, not a server tenant-bypass claim or a new
+authorization system. It does not guarantee immediate cleanup in frozen pages,
+cross-device push, instantaneous revocation or ordered concurrent authentication
+responses. Response headers such as `no-store` do not alone erase application
+memory. See the [session design](docs/DESIGN.md#shared-browser-session-coherence)
+and [limits](docs/LIMITATIONS.md).
 
 ## Queue queries and positions
 
@@ -209,7 +256,7 @@ when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.6.0 retains schema version 4. For schema 1, 2 or 3, stop every
+Version 0.7.0 retains schema version 4. For schema 1, 2 or 3, stop every
 application process using the dedicated database and take a private backup before
 running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.

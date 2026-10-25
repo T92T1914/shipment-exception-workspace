@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { adoptSessionContext, captureSessionContext, matchesSessionContext, openSessionChannel,
+  retireSessionContext, StaleSessionResponse } from './session_sync';
 
 type User = { id: string; name: string; email: string; organization_id: string; organization_name: string; role: 'operator' | 'reviewer' };
-type Session = { authenticated: boolean; csrf_token: string; user?: User };
+type Session = { authenticated: boolean; csrf_token: string; session_context: string; user?: User };
 type ShipmentException = {
   id: string; reference: string; summary: string; details: string;
   status: 'open' | 'resolved'; priority: 'high' | 'normal';
@@ -62,24 +64,35 @@ function retryDelay(value: string | null): number | undefined {
 }
 
 async function request<T>(path: string, init: RequestInit = {}, expectedStatus?: number): Promise<T> {
+  const snapshot = captureSessionContext();
+  const headers = new Headers(init.headers);
+  if (path !== '/api/session' && snapshot.context) headers.set('X-Workspace-Context', snapshot.context);
   let response: Response;
   try {
-    response = await fetch(path, { ...init, credentials: 'same-origin', cache: 'no-store' });
+    response = await fetch(path, { ...init, headers, credentials: 'same-origin', cache: 'no-store' });
   } catch (error) {
+    if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(0, 'transport_error', 'The connection ended before a response arrived.');
   }
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204) {
+    if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
+    return undefined as T;
+  }
   const retryAfterSeconds = response.status === 429 ? retryDelay(response.headers.get('Retry-After')) : undefined;
   let body;
   try {
+    // Consume an admitted body even when its session changed. The stale result
+    // is rejected below before status handling or a caller can use its data.
     body = await response.json();
   } catch {
+    if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
     if (response.status === 429) {
       throw new ApiError(429, 'login_throttled', 'Too many sign-in attempts. Wait before trying again.', retryAfterSeconds);
     }
     throw new ApiError(0, 'unreadable_response', 'The server response could not be read.');
   }
+  if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
   if (!response.ok) {
     const error = body && typeof body === 'object' ? body.error : undefined;
     throw new ApiError(response.status, typeof error?.code === 'string' ? error.code : 'request_failed',
@@ -89,6 +102,15 @@ async function request<T>(path: string, init: RequestInit = {}, expectedStatus?:
     throw new ApiError(0, 'unconfirmed_response', 'The response did not confirm the saved change.');
   }
   return body as T;
+}
+
+function sessionProblem(failure: unknown): failure is ApiError {
+  return failure instanceof ApiError && (failure.status === 401 || failure.code === 'session_changed');
+}
+
+function sameIdentity(left: Session, right: Session) {
+  return left.authenticated === right.authenticated && left.user?.id === right.user?.id &&
+    left.user?.organization_id === right.user?.organization_id;
 }
 
 function selectedFromHash(): string | null {
@@ -150,13 +172,24 @@ function App() {
   const [queueError, setQueueError] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [actionBusy, setBusy] = useState(false);
+  const [sessionChecking, setSessionChecking] = useState(false);
+  const [sessionCheckError, setSessionCheckError] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState('');
+  const busy = actionBusy || sessionChecking;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [conflict, setConflict] = useState(false);
   const [pending, setPending] = useState<PendingChange | null>(null);
   const pendingRef = useRef<PendingChange | null>(null);
-  const mutationLock = useRef(false);
+  const mutationLock = useRef<symbol | null>(null);
+  const actionOwner = useRef<symbol | null>(null);
+  const mounted = useRef(true);
+  const sessionValue = useRef(session);
+  const syncWork = useRef<Promise<void> | null>(null);
+  const syncAgain = useRef(false);
+  const notifier = useRef<ReturnType<typeof openSessionChannel> | null>(null);
+  const retiredUncertain = useRef(false);
   const activeUser = useRef<string | null>(null);
   const activeRole = useRef<string | undefined>(undefined);
   const accessRequest = useRef(0);
@@ -170,6 +203,7 @@ function App() {
   const queueBusy = useRef(false);
   activeUser.current = session?.user?.id ?? null;
   activeRole.current = session?.user?.role;
+  sessionValue.current = session;
   const canMutate = session?.user?.role === 'operator';
 
   const clearHistory = useCallback(() => {
@@ -181,7 +215,7 @@ function App() {
   const clearPrivateState = useCallback(() => {
     listRequest.current++; detailRequest.current++; accessRequest.current++;
     activeRole.current = undefined;
-    setItems([]); setMembers([]); setDetail(null); setResolution('');
+    setItems([]); setMembers([]); setDetail(null); setResolution(''); setAssignment('');
     const reset = firstQueuePage();
     queueRef.current = reset; setQueue(reset); setSearchDraft('');
     queueBusy.current = false;
@@ -191,18 +225,89 @@ function App() {
     clearHistory();
   }, [clearHistory]);
 
+  const installSession = useCallback((value: Session) => {
+    adoptSessionContext(value.session_context);
+    activeUser.current = value.user?.id ?? null;
+    activeRole.current = value.user?.role;
+    sessionValue.current = value;
+    setSession(value);
+  }, []);
+
+  const retireWorkspace = useCallback((message: string) => {
+    const uncertain = retiredUncertain.current || !!pendingRef.current || !!mutationLock.current;
+    retiredUncertain.current = uncertain;
+    retireSessionContext();
+    clearPrivateState();
+    activeUser.current = null; activeRole.current = undefined;
+    actionOwner.current = null; mutationLock.current = null;
+    sessionValue.current = null;
+    setSession(null); setBusy(false); setPassword(''); setLoginWait(null);
+    setConflict(false); setNotice(''); setSelectedId(null); setDetailLoading(false);
+    window.location.hash = '';
+    setError('');
+    setSessionMessage(uncertain ? `${message} An earlier change may already be saved. Its local retry was retired. Review saved records before new work.` : message);
+  }, [clearPrivateState]);
+
+  const synchronizeSession = useCallback((retire = false, message = 'Your account or session changed. Review the current workspace before new work.') => {
+    if (retire) retireWorkspace(message);
+    syncAgain.current = true;
+    if (syncWork.current) return syncWork.current;
+    setSessionChecking(true); setSessionCheckError(false);
+    const work = (async () => {
+      while (syncAgain.current && mounted.current) {
+        syncAgain.current = false;
+        const snapshot = captureSessionContext();
+        const expected = sessionValue.current;
+        const generation = ++accessRequest.current;
+        try {
+          const value = await request<Session>('/api/session');
+          if (!mounted.current || !matchesSessionContext(snapshot) || generation !== accessRequest.current) continue;
+          if ((snapshot.context !== null && snapshot.context !== value.session_context) ||
+              (expected && !sameIdentity(expected, value))) retireWorkspace(message);
+          installSession(value);
+          setSessionCheckError(false);
+        } catch (failure) {
+          if (!mounted.current || failure instanceof StaleSessionResponse || !matchesSessionContext(snapshot)) continue;
+          retireWorkspace('The current session could not be confirmed. Check the session before continuing.');
+          setSessionCheckError(true);
+        }
+      }
+    })();
+    syncWork.current = work;
+    void work.finally(() => {
+      if (syncWork.current !== work) return;
+      syncWork.current = null;
+      if (mounted.current) { setSessionChecking(false); setLoading(false); }
+    });
+    return work;
+  }, [installSession, retireWorkspace]);
+
+  function beginAction() {
+    const owner = Symbol();
+    actionOwner.current = owner; setBusy(true);
+    return owner;
+  }
+
+  function finishAction(owner: symbol) {
+    if (actionOwner.current !== owner) return;
+    actionOwner.current = null; setBusy(false);
+  }
+
   const refreshAccess = useCallback(async (user: string | null) => {
+    const snapshot = captureSessionContext();
+    const expected = sessionValue.current;
     const generation = ++accessRequest.current;
     const result = await request<Session>('/api/session');
-    if (generation !== accessRequest.current || user !== activeUser.current) return null;
-    if (!result.authenticated || !result.user || result.user.id !== user) {
-      clearPrivateState(); setSession(result); window.location.hash = '';
+    if (generation !== accessRequest.current || user !== activeUser.current || !matchesSessionContext(snapshot)) return null;
+    if (!result.authenticated || !result.user || result.user.id !== user || result.session_context !== snapshot.context ||
+        (expected && !sameIdentity(expected, result))) {
+      retireWorkspace('Your account or session changed. Review the current workspace before new work.'); installSession(result);
       return null;
     }
     activeRole.current = result.user.role;
-    setSession(result);
+    installSession(result);
     return result;
-  }, [clearPrivateState]);
+  }, [installSession, retireWorkspace]);
 
   const beginQueue = useCallback((view: QueueRequest) => {
     // Invalidate synchronously: an older response can arrive before React has
@@ -215,9 +320,10 @@ function App() {
   }, []);
 
   const loadLists = useCallback(async (view: QueueRequest, signal?: AbortSignal) => {
+    const snapshot = captureSessionContext();
     const generation = ++listRequest.current;
     const user = activeUser.current;
-    const current = () => generation === listRequest.current && user === activeUser.current && view === queueRef.current;
+    const current = () => generation === listRequest.current && user === activeUser.current && view === queueRef.current && matchesSessionContext(snapshot);
     setQueueLoading(true);
     try {
       const [list, team] = await Promise.all([
@@ -246,12 +352,13 @@ function App() {
     // An old refresh must not invalidate the request for a newer selection.
     if (selectedFromHash() !== id) return;
     const generation = ++detailRequest.current;
+    const snapshot = captureSessionContext();
     const user = activeUser.current;
     clearHistory();
     setHistoryLoading(true);
     try {
       const result = await request<Detail>(`/api/exceptions/${encodeURIComponent(id)}`, { signal });
-      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id) {
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id && matchesSessionContext(snapshot)) {
         const first = { ...result.history, events: result.events };
         if (!readableHistory(first) || first.through_version !== result.exception.version) {
           throw new ApiError(0, 'unreadable_history', 'The change history could not be read. Refresh the workspace to try again.');
@@ -263,34 +370,52 @@ function App() {
       }
       return result;
     } catch (failure) {
-      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id &&
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id && matchesSessionContext(snapshot) &&
           !(failure instanceof DOMException && failure.name === 'AbortError')) {
         setHistoryError('The latest history could not be loaded. Refresh the workspace to try again.');
       }
       throw failure;
     } finally {
-      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id) setHistoryLoading(false);
+      if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id && matchesSessionContext(snapshot)) setHistoryLoading(false);
     }
   }, [clearHistory]);
 
   const handleError = useCallback(async (failure: unknown) => {
-    if (failure instanceof DOMException && failure.name === 'AbortError') return;
-    if (failure instanceof ApiError && failure.status === 401) {
-      clearPrivateState();
-      setSession(null);
-      try { setSession(await request<Session>('/api/session')); } catch { /* The sign-in view includes retry. */ }
-      setError('Your session ended. Sign in again to continue.');
+    if (failure instanceof StaleSessionResponse || (failure instanceof DOMException && failure.name === 'AbortError')) return;
+    if (sessionProblem(failure)) {
+      await synchronizeSession(true);
       return;
     }
     setError(failure instanceof Error ? failure.message : 'The request could not be completed.');
-  }, [clearPrivateState]);
+  }, [synchronizeSession]);
 
   useEffect(() => {
     const controller = new AbortController();
     request<Session>('/api/session', { signal: controller.signal })
-      .then(setSession).catch(handleError).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .then(value => { if (!controller.signal.aborted) installSession(value); })
+      .catch(handleError).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [handleError]);
+  }, [handleError, installSession]);
+
+  useEffect(() => {
+    mounted.current = true;
+    notifier.current = openSessionChannel(() => { void synchronizeSession(true); });
+    const check = () => {
+      if (document.visibilityState === 'visible' && sessionValue.current) void synchronizeSession();
+    };
+    const shown = (event: PageTransitionEvent) => { if (event.persisted) check(); };
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('pageshow', shown);
+    return () => {
+      mounted.current = false;
+      accessRequest.current++;
+      notifier.current?.close(); notifier.current = null;
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('pageshow', shown);
+    };
+  }, [synchronizeSession]);
 
   useEffect(() => {
     const deadline = loginWait?.deadline;
@@ -330,10 +455,10 @@ function App() {
     const view = beginQueue(queueRef.current);
     const user = activeUser.current;
     loadLists(view, controller.signal).catch(failure => {
-      if (view === queueRef.current && user === activeUser.current && failure instanceof ApiError && failure.status === 401) void handleError(failure);
+      if (view === queueRef.current && user === activeUser.current && sessionProblem(failure)) void handleError(failure);
     });
     return () => controller.abort();
-  }, [session?.authenticated, session?.user?.id, beginQueue, loadLists, handleError]);
+  }, [session?.authenticated, session?.user?.id, session?.user?.organization_id, session?.session_context, beginQueue, loadLists, handleError]);
 
   useEffect(() => {
     setDetail(null); setResolution(''); setConflict(false);
@@ -344,21 +469,30 @@ function App() {
     loadDetail(selectedId, controller.signal).catch(handleError)
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [session?.authenticated, selectedId, loadDetail, handleError, clearHistory]);
+  }, [session?.authenticated, session?.session_context, selectedId, loadDetail, handleError, clearHistory]);
 
   async function signIn(event: React.FormEvent) {
     event.preventDefault();
     const deadline = loginWait?.deadline;
     if (!session || busy || (typeof deadline === 'number' && performance.now() < deadline)) return;
-    setBusy(true); setError(''); setLoginWait(null);
+    const owner = beginAction();
+    const snapshot = captureSessionContext();
+    setError(''); setLoginWait(null);
     try {
       const result = await request<Session>('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token },
         body: JSON.stringify({ email, password }),
       });
-      clearPrivateState(); setSession(result); setPassword(''); setNotice(''); setLoginWait(null);
+      if (actionOwner.current !== owner || !matchesSessionContext(snapshot)) return;
+      clearPrivateState(); installSession(result); setPassword(''); setNotice(''); setLoginWait(null);
+      notifier.current?.notify();
     } catch (failure) {
-      if (failure instanceof ApiError && failure.status === 429) {
+      if (actionOwner.current !== owner || !matchesSessionContext(snapshot)) return;
+      if (failure instanceof StaleSessionResponse) return;
+      // A rejected password leaves the current anonymous session usable.
+      // Only an explicit context mismatch needs account reconciliation here.
+      if (failure instanceof ApiError && failure.code === 'session_changed') { await handleError(failure); }
+      else if (failure instanceof ApiError && failure.status === 429) {
         const delay = failure.retryAfterSeconds;
         setLoginWait({ deadline: delay === undefined ? null : performance.now() + delay * 1000,
           seconds: delay ?? 0, missingDelay: delay === undefined });
@@ -367,36 +501,46 @@ function App() {
         setError(failure instanceof Error ? failure.message : 'Sign-in could not be completed.');
       }
     }
-    finally { setBusy(false); }
+    finally { finishAction(owner); }
   }
 
   async function signOut() {
     if (!session || busy || pendingRef.current) return;
-    setBusy(true); setError('');
+    const owner = beginAction();
+    const snapshot = captureSessionContext();
+    setError('');
     try {
       await request<void>('/api/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token } });
-      clearPrivateState(); setSession(null); window.location.hash = '';
-      setSession(await request<Session>('/api/session')); setNotice('Signed out.');
-    } catch (failure) { await handleError(failure); }
-    finally { setBusy(false); }
+      if (actionOwner.current !== owner || !matchesSessionContext(snapshot)) return;
+      retireWorkspace('');
+      // Establish the next anonymous cookie before notifying other tabs. They
+      // can then read that session instead of all creating anonymous cookies.
+      await synchronizeSession();
+      notifier.current?.notify();
+    } catch (failure) {
+      if (actionOwner.current === owner && matchesSessionContext(snapshot)) await handleError(failure);
+    }
+    finally { finishAction(owner); }
   }
 
   async function refreshCurrent() {
     if (busy || pendingRef.current) return;
-    setBusy(true); setError('');
+    const owner = beginAction();
+    const snapshot = captureSessionContext();
+    setError('');
     const user = activeUser.current;
     let view: QueueRequest | undefined;
     try {
       if (!await refreshAccess(user)) return;
       view = beginQueue(firstQueuePage(queueRef.current.status, queueRef.current.q));
       await loadLists(view);
-      if (user !== activeUser.current) return;
+      if (user !== activeUser.current || !matchesSessionContext(snapshot)) return;
       if (selectedId) await loadDetail(selectedId);
-      if (user === activeUser.current) {
+      if (user === activeUser.current && matchesSessionContext(snapshot)) {
         setConflict(false); setNotice('Showing the first queue page and the latest saved record. Review it before making another change.');
       }
     } catch (failure) { if (user === activeUser.current && (!view || view === queueRef.current)) await handleError(failure); }
-    finally { setBusy(false); }
+    finally { finishAction(owner); }
   }
 
   async function browseQueue(view: QueueRequest) {
@@ -405,7 +549,7 @@ function App() {
     beginQueue(view); setNotice('');
     try { await loadLists(view); }
     catch (failure) {
-      if (view === queueRef.current && user === activeUser.current && failure instanceof ApiError && failure.status === 401) await handleError(failure);
+      if (view === queueRef.current && user === activeUser.current && sessionProblem(failure)) await handleError(failure);
     }
   }
 
@@ -442,10 +586,11 @@ function App() {
   async function browseHistory(view: HistoryView) {
     if (busy || pendingRef.current || historyBusy.current || selectedFromHash() !== view.id) return;
     const generation = ++historyRequest.current;
+    const snapshot = captureSessionContext();
     const recordGeneration = detailRequest.current;
     const user = activeUser.current;
     const current = () => generation === historyRequest.current && recordGeneration === detailRequest.current &&
-      user === activeUser.current && selectedFromHash() === view.id && historyRef.current === view;
+      user === activeUser.current && selectedFromHash() === view.id && historyRef.current === view && matchesSessionContext(snapshot);
     historyRef.current = view; historyBusy.current = true;
     setHistoryView(view); setHistoryPage(null); setHistoryError(''); setHistoryLoading(true);
     try {
@@ -461,7 +606,7 @@ function App() {
       setHistoryPage(page);
     } catch (failure) {
       if (!current()) return;
-      if (failure instanceof ApiError && failure.status === 401) {
+      if (sessionProblem(failure)) {
         await handleError(failure);
       } else {
         setHistoryError('This history page could not be loaded. Retry the page or refresh the latest changes.');
@@ -484,9 +629,12 @@ function App() {
   }
 
   async function sendChange(intent: ChangeIntent | PendingChange) {
-    if (!session || activeRole.current !== 'operator' || mutationLock.current) return;
-    mutationLock.current = true;
-    setBusy(true); setError(''); setNotice(''); setConflict(false);
+    if (!session || busy || activeRole.current !== 'operator' || mutationLock.current) return;
+    const owner = beginAction();
+    mutationLock.current = owner;
+    const snapshot = captureSessionContext();
+    retiredUncertain.current = false; setSessionMessage('');
+    setError(''); setNotice(''); setConflict(false);
     const user = activeUser.current;
     let change: PendingChange | null = null;
     let committed = false;
@@ -513,7 +661,7 @@ function App() {
         throw new ApiError(0, 'unreadable_response', 'The saved record could not be confirmed from the response.');
       }
       committed = true;
-      if (user !== activeUser.current) return;
+      if (user !== activeUser.current || !matchesSessionContext(snapshot)) return;
       pendingRef.current = null; setPending(null);
       setResolution('');
       if (change.action === 'create') {
@@ -523,10 +671,12 @@ function App() {
       const view = beginQueue(change.action === 'create' ? firstQueuePage() : firstQueuePage(queueRef.current.status, queueRef.current.q));
       await loadLists(view);
       if (change.action !== 'create' && change.id && selectedFromHash() === change.id) await loadDetail(change.id);
-      if (user === activeUser.current) setNotice(change.action === 'create' ? 'Exception created.' : change.action === 'assign' ? 'Assignment saved.' : 'Exception resolved.');
+      if (user === activeUser.current && matchesSessionContext(snapshot)) setNotice(change.action === 'create' ? 'Exception created.' : change.action === 'assign' ? 'Assignment saved.' : 'Exception resolved.');
     } catch (failure) {
-      if (user !== activeUser.current) return;
-      if (!change) {
+      if (user !== activeUser.current || !matchesSessionContext(snapshot) || failure instanceof StaleSessionResponse) return;
+      if (sessionProblem(failure)) {
+        await handleError(failure);
+      } else if (!change) {
         pendingRef.current = null; setPending(null);
         setError('The change could not be prepared. Nothing was sent. Try again.');
       } else if (!committed && failure instanceof ApiError && (failure.status === 0 || failure.status >= 500)) {
@@ -550,7 +700,10 @@ function App() {
           setError('Your change was saved, but the refreshed record could not be loaded. Refresh the workspace to see it.');
         } else { await handleError(failure); }
       }
-    } finally { mutationLock.current = false; setBusy(false); }
+    } finally {
+      if (mutationLock.current === owner) mutationLock.current = null;
+      finishAction(owner);
+    }
   }
 
   function assign(event: React.FormEvent) {
@@ -603,9 +756,10 @@ function App() {
       <section className="login-intro"><p className="eyebrow">Keep the handoff clear</p><h1>One exception.<br />One accountable next step.</h1><p>Review the shipment, assign a teammate, and record how it was resolved. Each saved change keeps its place in the history.</p><div className="intro-flow"><span>Review</span><span aria-hidden="true">/</span><span>Assign</span><span aria-hidden="true">/</span><span>Resolve</span></div><p className="small-print">Local demonstration using synthetic data. No live freight systems are connected.</p></section>
       <section className="login-card" aria-labelledby="sign-in-title"><p className="eyebrow">Organization access</p><h2 id="sign-in-title">Sign in to the workspace</h2><p className="muted">Use an account and password from your local seed setup.</p>
         {error && <div className="message error" role="alert">{error}</div>}
+        {sessionMessage && <div className="message error session-message" role="alert">{sessionMessage}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
         {loginWait && <div id="login-wait" className="login-wait" role="status" aria-live="polite" aria-atomic="true"><p>{loginWait.seconds > 0 ? `Try again in ${loginWait.seconds} ${loginWait.seconds === 1 ? 'second' : 'seconds'}.` : loginWait.missingDelay ? 'The server did not provide a usable retry time. Wait before trying again.' : 'The countdown has ended. You can try signing in again.'}</p><p>{loginWait.missingDelay ? 'The server decides when sign-in is allowed.' : 'This countdown is a local reminder. The server decides when sign-in is allowed.'}</p></div>}
-        {loading ? <p role="status">Opening a session...</p> : !session ? <div><p>The session could not be opened.</p><button className="button primary" onClick={() => window.location.reload()}>Retry connection</button></div> : <form onSubmit={event => void signIn(event)}>
+        {loading ? <p role="status">Opening a session...</p> : sessionCheckError || !session ? <div><p>The current session could not be confirmed.</p><button className="button primary" disabled={busy} onClick={() => void synchronizeSession()}>Check current session</button></div> : <form onSubmit={event => void signIn(event)}>
           <label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} maxLength={254} required disabled={busy} />
           <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={busy} />
           <button className="button primary full-width" type="submit" disabled={busy || loginBlocked} aria-describedby={loginWait ? 'login-wait' : undefined}>{busy ? 'Signing in...' : 'Sign in'}</button>
@@ -616,6 +770,7 @@ function App() {
       <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><div className="workspace-controls"><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button>{canMutate && <button className="button primary" disabled={busy || !!pending || creating} onClick={startCreate}>New exception</button>}</div></section>
       {!canMutate && <section className="access-notice" aria-label="Read-only access"><h2>Read-only access</h2><p>You can browse your organization's exceptions and change history. Creating, assigning and resolving exceptions requires an operator.</p></section>}
       <div className="workspace-messages">
+        {sessionMessage && <div className="message error session-message" role="alert">{sessionMessage}</div>}
         {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy || !canMutate}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
       </div>
