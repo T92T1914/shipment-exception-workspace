@@ -471,8 +471,15 @@ that local pending intent, switches conservatively to read-only access and
 explains that an earlier interrupted request may already be saved. It does not
 turn the denial into proof of an earlier failure. A permission refresh performs
 no automatic POST. Current records can be inspected after an explicit refresh.
-Other uncertain operator outcomes retain their original canonical key and body
-while their session context stays current.
+Version 0.7.1 also handles an authoritative session read that learns reviewer
+access while an operator intent is pending or in flight. It retires the old
+workspace epoch, intent and write drafts before installing current access. This
+rejects a delayed completion even though actor, organization and cookie context
+can be unchanged. A role change reloads the queue, and reading, refresh and
+sign-out become available. The warning preserves the earlier request's unknown
+outcome. An unchanged operator session check retains ordinary uncertain retries
+with their original canonical key and body. No role-change push or automatic
+business POST is added.
 
 Pending intake keeps its submitted fields and blocks another form submission or
 navigation to a different record. A duplicate reference is a confirmed conflict,

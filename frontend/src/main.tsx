@@ -248,6 +248,15 @@ function App() {
     setSessionMessage(uncertain ? `${message} An earlier change may already be saved. Its local retry was retired. Review saved records before new work.` : message);
   }, [clearPrivateState]);
 
+  const retireReadOnlyIntent = useCallback((value: Session) => {
+    if (value.user?.role === 'reviewer' && pendingRef.current) {
+      // A successful session read can remove replay permission before a POST
+      // reports read_only. Retire its epoch too, so a delayed completion cannot
+      // restore the old operator view or clear a newer action's busy state.
+      retireWorkspace('Your current access is read-only. Review saved records before continuing.');
+    }
+  }, [retireWorkspace]);
+
   const synchronizeSession = useCallback((retire = false, message = 'Your account or session changed. Review the current workspace before new work.') => {
     if (retire) retireWorkspace(message);
     syncAgain.current = true;
@@ -264,6 +273,7 @@ function App() {
           if (!mounted.current || !matchesSessionContext(snapshot) || generation !== accessRequest.current) continue;
           if ((snapshot.context !== null && snapshot.context !== value.session_context) ||
               (expected && !sameIdentity(expected, value))) retireWorkspace(message);
+          else retireReadOnlyIntent(value);
           installSession(value);
           setSessionCheckError(false);
         } catch (failure) {
@@ -280,7 +290,7 @@ function App() {
       if (mounted.current) { setSessionChecking(false); setLoading(false); }
     });
     return work;
-  }, [installSession, retireWorkspace]);
+  }, [installSession, retireReadOnlyIntent, retireWorkspace]);
 
   function beginAction() {
     const owner = Symbol();
@@ -304,10 +314,11 @@ function App() {
       retireWorkspace('Your account or session changed. Review the current workspace before new work.'); installSession(result);
       return null;
     }
+    retireReadOnlyIntent(result);
     activeRole.current = result.user.role;
     installSession(result);
     return result;
-  }, [installSession, retireWorkspace]);
+  }, [installSession, retireReadOnlyIntent, retireWorkspace]);
 
   const beginQueue = useCallback((view: QueueRequest) => {
     // Invalidate synchronously: an older response can arrive before React has
@@ -458,7 +469,7 @@ function App() {
       if (view === queueRef.current && user === activeUser.current && sessionProblem(failure)) void handleError(failure);
     });
     return () => controller.abort();
-  }, [session?.authenticated, session?.user?.id, session?.user?.organization_id, session?.session_context, beginQueue, loadLists, handleError]);
+  }, [session?.authenticated, session?.user?.id, session?.user?.organization_id, session?.user?.role, session?.session_context, beginQueue, loadLists, handleError]);
 
   useEffect(() => {
     setDetail(null); setResolution(''); setConflict(false);

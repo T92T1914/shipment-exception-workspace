@@ -75,11 +75,13 @@ a UI affordance; the server enforces this rule independently.
 
 An operator tab can become stale after its database role changes. On an explicit
 `read_only` response, the UI retires its local pending change and shows read-only
-access. That denial does not prove an earlier interrupted attempt failed: it may
-already have committed. Refresh the workspace and inspect saved records before
-new work. Permission refresh performs no automatic mutation retry. Ordinary
-uncertain operator requests still retain their original key and body while the
-session context remains current.
+access. A successful session check that learns reviewer access also retires a
+pending or in-flight operator change, rejects its delayed completion and restores
+reading, refresh and sign-out. Either path preserves the warning that an earlier
+attempt may already have committed. Inspect saved records before new work.
+Permission refresh performs no automatic mutation retry. Ordinary uncertain
+operator requests still retain their original key and body while their session
+and operator access remain current.
 
 New reference, summary and details inputs lose outer whitespace. A reference is
 unique within its organization and remains case-sensitive: `NL-2000` and
@@ -235,7 +237,7 @@ The helper creates its own loopback cluster and two new databases. It does not
 start or alter an installed PostgreSQL service.
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v070'
+$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v071'
 py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
@@ -248,7 +250,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.7.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.7.1-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -300,7 +302,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.7.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.7.1-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -315,7 +317,7 @@ origin as the API, so the installed application needs no Vite development server
 
 ## Use an existing database
 
-Version 0.7.0 continues to use schema version 4. An existing schema 1, 2 or 3 database
+Version 0.7.1 continues to use schema version 4. An existing schema 1, 2 or 3 database
 needs the explicit migration below. Stop every application process using the
 dedicated database before changing its installed environment, and make a private
 backup with your PostgreSQL backup tooling before migration. Keep
@@ -323,18 +325,18 @@ the backup, connection record and existing credentials outside Git. The migratio
 command does not make a backup, and this release does not qualify a
 backup-restoration or downgrade procedure.
 
-Build the v0.7.0 wheel as above, then install it into a new environment. Here,
+Build the v0.7.1 wheel as above, then install it into a new environment. Here,
 `$state` names the existing private state directory, not the fresh-start example.
 Load `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v070'
+$upgradeEnv = Join-Path $state 'consumer-env-v071'
 if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.7.0-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.7.1-py3-none-any.whl
 ```
 
 For schema 1, 2 or 3, run the explicit migration before serving. An existing
