@@ -75,11 +75,15 @@ async function request<T>(path: string, init: RequestInit = {}, expectedStatus?:
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(0, 'transport_error', 'The connection ended before a response arrived.');
   }
-  if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204) {
+    if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
+    return undefined as T;
+  }
   const retryAfterSeconds = response.status === 429 ? retryDelay(response.headers.get('Retry-After')) : undefined;
   let body;
   try {
+    // Consume an admitted body even when its session changed. The stale result
+    // is rejected below before status handling or a caller can use its data.
     body = await response.json();
   } catch {
     if (!matchesSessionContext(snapshot)) throw new StaleSessionResponse();
