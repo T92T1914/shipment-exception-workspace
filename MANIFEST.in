@@ -4,5 +4,6 @@ include frontend/tsconfig.json frontend/vite.config.ts frontend/playwright.confi
 recursive-include frontend/src *.ts *.tsx *.css
 recursive-include frontend/e2e *.ts
 recursive-include tools *.py
+include tools/restored_browser.cjs
 recursive-include tests *.py *.sql
 recursive-include docs *.md *.png
