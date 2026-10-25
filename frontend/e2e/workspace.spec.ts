@@ -1999,3 +1999,222 @@ test('a matching operator session check preserves the same uncertain retry ident
   expect(await (await page.request.get(`/api/exceptions/${id}`)).json()).toEqual(saved);
   assertBrowser();
 });
+
+async function prepareRefreshRecord(page: Page, suffix: string) {
+  loginAdmissionFixture('expire');
+  roleFixture('promote-alex');
+  await page.goto('/');
+  await signInHere(page, 'northline');
+  const session = await (await page.request.get('/api/session')).json();
+  const reference = `NL-RF-${suffix}`;
+  const created = await page.request.post('/api/exceptions', {
+    headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': session.csrf_token,
+      'X-Workspace-Context': session.session_context, 'Idempotency-Key': crypto.randomUUID() },
+    data: { reference, summary: 'Explicit refresh acceptance', details: 'Synthetic refresh coordination record.', priority: 'normal' },
+  });
+  expect(created.status()).toBe(201);
+  const id = (await created.json()).exception.id as string;
+  await searchQueue(page, reference, 1);
+  const detail = await openRecord(page, reference);
+  await expect(detail.locator('.record-meta')).toContainText('Version 1');
+  const assigned = await page.request.post(`/api/exceptions/${id}/assign`, {
+    headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': session.csrf_token,
+      'X-Workspace-Context': session.session_context, 'Idempotency-Key': crypto.randomUUID() },
+    data: { expected_version: 1, assignee_id: '00000000-0000-0000-0000-00000000000c' },
+  });
+  expect(assigned.status()).toBe(200);
+  expect((await assigned.json()).exception.version).toBe(2);
+  const saved = await (await page.request.get(`/api/exceptions/${id}`)).json();
+  expect(saved.exception.version).toBe(2);
+  expect(saved.events.map((event: { version: number }) => event.version)).toEqual([1, 2]);
+  await page.evaluate(() => { (window as Window & { refreshDocument?: string }).refreshDocument = 'original refresh document'; });
+  return { id, reference, session, saved, detail };
+}
+
+async function holdRefreshChecks(page: Page, failSecond = false) {
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  let firstArrived!: () => void;
+  let secondArrived!: () => void;
+  const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const secondGate = new Promise<void>(resolve => { releaseSecond = resolve; });
+  const first = new Promise<void>(resolve => { firstArrived = resolve; });
+  const second = new Promise<void>(resolve => { secondArrived = resolve; });
+  let checks = 0;
+  const roles: string[] = [];
+  await page.route('**/api/session', async route => {
+    const index = ++checks;
+    const actual = await route.fetch();
+    expect(actual.status()).toBe(200);
+    roles.push((await actual.json()).user?.role ?? 'anonymous');
+    if (index === 1) { firstArrived(); await firstGate; }
+    if (index === 2) { secondArrived(); await secondGate; }
+    if (index === 2 && failSecond) {
+      // The server answered normally. This declared client-delivery fixture
+      // replaces only the trailing response with an unavailable-check error.
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Synthetic session check unavailable.' } }) });
+    } else await route.fulfill({ response: actual });
+  });
+  return { first, second, releaseFirst, releaseSecond, roles, count: () => checks,
+    async close() { releaseFirst(); releaseSecond(); await page.unrouteAll({ behavior: 'wait' }); } };
+}
+
+for (const viewport of [{ name: 'desktop', width: 1440, height: 1000 }, { name: 'narrow', width: 390, height: 844 }]) {
+  test(`${viewport.name} explicit refresh survives a matching focus check`, async ({ page }) => {
+    const assertBrowser = observeBrowser(page);
+    await page.setViewportSize(viewport);
+    const record = await prepareRefreshRecord(page, viewport.name === 'desktop' ? 'D' : 'N');
+    if (viewport.name === 'narrow') await page.addStyleTag({ content: ':root { font-size: 200%; }' });
+    const barriers = await holdRefreshChecks(page);
+    let businessPosts = 0;
+    let dataReads = 0;
+    page.on('request', request => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() === 'POST' && path.startsWith('/api/exceptions')) businessPosts++;
+      if (request.method() === 'GET' && path.startsWith('/api/exceptions')) dataReads++;
+    });
+    try {
+      const refresh = page.getByRole('button', { name: 'Refresh workspace', exact: true });
+      await refresh.focus();
+      await expect(refresh).toBeFocused();
+      await page.keyboard.press('Enter');
+      await barriers.first;
+      // Synchronous dispatch proves the lifecycle listener ran before delivery.
+      // It does not simulate physical mobile suspension or browser restoration.
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      barriers.releaseFirst();
+      await barriers.second;
+      await expect(record.detail.locator('.record-meta')).toContainText('Version 1');
+      expect(dataReads).toBe(0);
+      const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+      barriers.releaseSecond();
+      await (await delivered).finished();
+      await expect(refresh).toBeEnabled();
+      expect(barriers.roles).toEqual(['operator', 'operator']);
+      expect(barriers.count()).toBe(2);
+      expect(businessPosts).toBe(0);
+      await expect(record.detail.locator('.record-meta')).toContainText('Version 2');
+      await expect(page.getByText('Showing the first queue page and the latest saved record. Review it before making another change.', { exact: true })).toBeVisible();
+      await expect(record.detail.locator('.history-list li')).toHaveCount(2);
+      await expect(page.getByLabel('Assigned to', { exact: true })).toHaveValue('00000000-0000-0000-0000-00000000000c');
+      expect(await (await page.request.get(`/api/exceptions/${record.id}`)).json()).toEqual(record.saved);
+      expect(await page.evaluate(() => (window as Window & { refreshDocument?: string }).refreshDocument)).toBe('original refresh document');
+      await assertNoHorizontalOverflow(page);
+      await screenshot(page, `${viewport.name}-explicit-refresh.png`);
+      assertBrowser();
+    } finally { await barriers.close(); }
+  });
+}
+
+test('explicit refresh joins a matching lifecycle check already in flight', async ({ page }) => {
+  const assertBrowser = observeBrowser(page);
+  const record = await prepareRefreshRecord(page, 'J');
+  const barriers = await holdRefreshChecks(page);
+  try {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await barriers.first;
+    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    barriers.releaseFirst();
+    await barriers.second;
+    await expect(record.detail.locator('.record-meta')).toContainText('Version 1');
+    const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+    barriers.releaseSecond();
+    await (await delivered).finished();
+    await expect(record.detail.locator('.record-meta')).toContainText('Version 2');
+    await expect(page.getByText('Showing the first queue page and the latest saved record. Review it before making another change.', { exact: true })).toBeVisible();
+    expect(barriers.count()).toBe(2);
+    expect(await (await page.request.get(`/api/exceptions/${record.id}`)).json()).toEqual(record.saved);
+    assertBrowser();
+  } finally { await barriers.close(); }
+});
+
+test('explicit refresh uses trailing current reviewer access without a business replay', async ({ page }) => {
+  const assertBrowser = observeBrowser(page);
+  const record = await prepareRefreshRecord(page, 'R');
+  const barriers = await holdRefreshChecks(page);
+  let businessPosts = 0;
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++; });
+  try {
+    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    await barriers.first;
+    roleFixture('demote-alex');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    barriers.releaseFirst();
+    await barriers.second;
+    const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+    barriers.releaseSecond();
+    await (await delivered).finished();
+    await expect(page.locator('.identity .access-role')).toHaveText('Read-only reviewer');
+    await expect(record.detail.locator('.record-meta')).toContainText('Version 2');
+    await expect(page.getByRole('button', { name: 'New exception', exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Resolution note', { exact: true })).toHaveCount(0);
+    expect(barriers.roles).toEqual(['operator', 'reviewer']);
+    expect(businessPosts).toBe(0);
+    expect(await (await page.request.get(`/api/exceptions/${record.id}`)).json()).toEqual(record.saved);
+    assertBrowser();
+  } finally { await barriers.close(); roleFixture('promote-alex'); }
+});
+
+test('explicit refresh fails closed on a trailing check error and recovers manually', async ({ page }) => {
+  const assertBrowser = observeBrowser(page, { expectedStatus: 503 });
+  const record = await prepareRefreshRecord(page, 'F');
+  const barriers = await holdRefreshChecks(page, true);
+  let businessPosts = 0;
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++; });
+  try {
+    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    await barriers.first;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    barriers.releaseFirst();
+    await barriers.second;
+    const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session' && response.status() === 503);
+    barriers.releaseSecond();
+    await (await delivered).finished();
+    await expect(page.locator('.detail-heading')).toHaveCount(0);
+    await expect(page.locator('.session-message')).toContainText('could not be confirmed');
+    await expect(page.getByText('Showing the first queue page and the latest saved record. Review it before making another change.', { exact: true })).toHaveCount(0);
+    const recover = page.getByRole('button', { name: 'Check current session', exact: true });
+    await recover.focus();
+    await expect(recover).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expectOnlyOrganization(page, 'northline');
+    await searchQueue(page, record.reference, 1);
+    await openRecord(page, record.reference);
+    await expect(record.detail.locator('.record-meta')).toContainText('Version 2');
+    expect(businessPosts).toBe(0);
+    expect(await (await page.request.get(`/api/exceptions/${record.id}`)).json()).toEqual(record.saved);
+    assertBrowser();
+  } finally { await barriers.close(); }
+});
+
+test('an account change retires a held explicit refresh without entering the next workspace', async ({ page, context }) => {
+  const assertBrowser = observeBrowser(page);
+  const record = await prepareRefreshRecord(page, 'A');
+  const barriers = await holdRefreshChecks(page);
+  const second = await context.newPage();
+  const assertSecond = observeBrowser(second);
+  let businessPosts = 0;
+  let retiredDetailReads = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/exceptions')) businessPosts++;
+    if (request.method() === 'GET' && new URL(request.url()).pathname === `/api/exceptions/${record.id}`) retiredDetailReads++;
+  });
+  try {
+    await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
+    await barriers.first;
+    await second.goto('/');
+    await switchAccountHere(second, 'harbor', true);
+    await expect(page.locator('.detail-heading')).toHaveCount(0);
+    const delivered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session');
+    barriers.releaseFirst();
+    await (await delivered).finished();
+    await barriers.second;
+    barriers.releaseSecond();
+    await expectOnlyOrganization(page, 'harbor');
+    expect(await page.evaluate(() => (window as Window & { refreshDocument?: string }).refreshDocument)).toBe('original refresh document');
+    await expect(page.locator('.workspace')).not.toContainText(record.reference);
+    expect(retiredDetailReads).toBe(0);
+    expect(businessPosts).toBe(0);
+    assertBrowser(); assertSecond();
+  } finally { await barriers.close(); await second.close(); }
+});
