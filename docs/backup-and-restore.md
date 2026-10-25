@@ -36,6 +36,11 @@ alone does not grant access to `pg_control_system()`. Delegating production
 database privileges is outside this route; do not grant privileges merely to
 make this fixture pass.
 
+The fixture uses default per-database settings. This no-create recipe does not
+restore database-level configuration, cluster configuration, roles or
+tablespaces. If an existing workspace depends on other settings, stop and
+qualify those separately rather than assuming the record comparison covers them.
+
 Stop the source application and any fixture writers you own before taking its
 comparison fingerprint. Keep them stopped through the dump and post-dump
 fingerprint, while leaving PostgreSQL running. This makes the controlled
