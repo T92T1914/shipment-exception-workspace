@@ -1,4 +1,4 @@
-include LICENSE THIRD_PARTY_NOTICES.txt requirements-lock.txt
+include LICENSE SECURITY.md THIRD_PARTY_NOTICES.txt requirements-lock.txt
 include frontend/package.json frontend/package-lock.json frontend/index.html
 include frontend/tsconfig.json frontend/vite.config.ts frontend/playwright.config.ts
 recursive-include frontend/src *.ts *.tsx *.css

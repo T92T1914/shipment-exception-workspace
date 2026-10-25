@@ -25,6 +25,8 @@ with zipfile.ZipFile(wheel) as archive:
             assert archive.read(name) == (root / "src" / name).read_bytes(), f"Stale wheel source: {name}"
 sdist = root / "dist" / "shipment_exception_workspace-0.7.1.tar.gz"
 with tarfile.open(sdist) as archive:
+    security = archive.extractfile("shipment_exception_workspace-0.7.1/SECURITY.md")
+    assert security.read() == (root / "SECURITY.md").read_bytes(), "Missing or stale sdist security notes"
     for version in (1, 2, 3):
         fixture = f"shipment_exception_workspace-0.7.1/tests/fixtures/schema_v{version}.sql"
         assert archive.extractfile(fixture).read() == (root / f"tests/fixtures/schema_v{version}.sql").read_bytes()
