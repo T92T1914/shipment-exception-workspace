@@ -1,148 +1,176 @@
-# Bounded history verification
+# Shared-session coherence verification
 
-The October 25, 2026 local campaign tested implementation
-[`ab7c6b8dff04788348f3272dfb12af1b0f1e3072`](https://github.com/T92T1914/shipment-exception-workspace/commit/ab7c6b8dff04788348f3272dfb12af1b0f1e3072)
-through an ordinary v0.6.0 wheel installed into a fresh environment outside the
-checkout. All seven sequential manifest checks passed with unchanged sampled
-source contents. This evidence note and its two synthetic captures were added
-afterward. Earlier [v0.5.0](VERIFICATION-v0.5.0.md),
+The October 25, 2026 campaign reproduced a v0.6.0 account-coherence gap, then
+tested v0.7.0 through ordinary wheels installed in fresh environments outside
+the checkout. Initial implementation
+[`3b9ea4c9de82be89a9455c8f1465af992aa96fc0`](https://github.com/T92T1914/shipment-exception-workspace/commit/3b9ea4c9de82be89a9455c8f1465af992aa96fc0)
+passed the complete backend suite and installed consumer, but its browser
+campaign failed an existing delayed-response case. Frontend correction
+[`4c85922b46ca5223f9ff9baa314cf8e40bcb0d7d`](https://github.com/T92T1914/shipment-exception-workspace/commit/4c85922b46ca5223f9ff9baa314cf8e40bcb0d7d)
+then passed the complete 42-journey browser campaign on a separate fresh
+consumer. The evidence note and new synthetic captures were added afterward.
+
+Earlier [v0.6.0](VERIFICATION-v0.6.0.md), [v0.5.0](VERIFICATION-v0.5.0.md),
 [v0.4.0](VERIFICATION-v0.4.0.md), [v0.3.0](VERIFICATION-v0.3.0.md),
-[v0.2.0](VERIFICATION-v0.2.0.md) and [v0.1.0](VERIFICATION-v0.1.0.md) records keep
-their original results and scope.
+[v0.2.0](VERIFICATION-v0.2.0.md) and [v0.1.0](VERIFICATION-v0.1.0.md) records
+retain their original results and scope.
 
-## Executed local results
+## Baseline and executed results
 
-The tested combination was Windows x64, CPython 3.13.3, PostgreSQL 18.1,
-Node 24.16.0 and npm 11.13.0 with the existing dependency locks. Browser checks
-used Playwright 1.64.1 and Chromium headless shell 153.0.8010.12, one worker and
-an isolated profile. Build/test thread limits were two. No screen, interactive
-browser profile, clipboard, audio or visible application was used.
+The baseline used an ordinary installed v0.6.0 wheel at accepted source
+`d733c340cd54ecad0beaea0e1867e2329c49f895`, a new dedicated database and two
+actual isolated browser pages sharing cookies. After the second page signed out
+of Northline and into Harbor, the first page retained its Northline identity
+label. Its HS- search displayed Harbor rows, while an authoritative session
+read correctly identified Harbor. The first page was not reloaded.
 
-| Check | Actual result |
+This is an observed client identity/cache-coherence mismatch. The server still
+authorized against the current shared cookie. It is not a demonstrated
+server-side tenant-authorization bypass. The baseline result and capture remain
+private, separately from the candidate and its accepted captures.
+
+The tested local combination was Windows x64, CPython 3.13.3, PostgreSQL 18.1,
+Node 24.16.0/npm 11.13.0 and the existing locks. Browser checks used Playwright
+1.64.1 and Chromium headless shell 153.0.8010.12 with one worker and isolated
+profiles. Build/test thread limits were two. No screen, real browser profile,
+clipboard, audio or visible application was used.
+
+| Check | Actual result and identity |
 | --- | --- |
-| TypeScript/Vite | Production build passed |
-| Wheel/source archive | Built v0.6.0 and checked packaged Python/SQL source identity, built UI, notices and all three immutable migration fixtures |
-| Fresh installation | Imported v0.6.0 from external site-packages on Python 3.13.3; pip check passed |
-| Installed PostgreSQL suite | 245 passed in 156.33 seconds, with one retained TestClient deprecation warning |
-| Installed restart consumer | Retained workflow/reviewer/admission checks plus bounded detail, three-page history, cursor continuation across API restart and append fencing passed |
-| Built browser journeys | All 29 passed in 44.7 seconds, retaining the prior 25 and adding desktop/narrow history, failure recovery and delayed-response cases |
-| Independent source review | A separate non-author found no remaining semantic or authorization blocker in the inspected implementation and test design |
+| Frontend and package | Production builds, wheel/source contents, built UI, notices and immutable SQL fixtures passed |
+| Initial installed backend | 263 tests passed in 202.63 seconds on 3b9ea4c, with one retained TestClient warning |
+| Initial browser | 20 passed, one timeout, 21 not run; this campaign failed |
+| Corrected fresh installation | Ordinary v0.7.0 imported from external site-packages on Python 3.13.3; pip check passed |
+| Backend evidence reuse | Exact Python/SQL wheel bytes, backend tests, consumer and pinned inputs remained unchanged after the frontend-only correction |
+| Corrected installed consumer | Session rotation, retired-context denial, optional-header compatibility and real process-restart checks passed alongside retained workflow acceptance |
+| Corrected built browser | All 42 passed, approximately 1.4 minutes; JSON duration 81.75 seconds, with zero skipped, unexpected or flaky |
+| Final local manifest | All seven checks passed, including the explicitly labeled backend-evidence identity check rather than a new backend test execution |
 
-Local wheel SHA-256 is
-`f1acabef55503c4f9bff58532849ed0341cf0af0142716a7cc5d01bf5a32699d`.
-The sampled repository fingerprint remained
-`c3be382a255f1dc78868d0fa1b9570f9bd723bda5567267214af48ea2dfef9d4`.
-Manifest SHA-256 is
-`aae2a2344006d0bae78beda8ac304557e976c1fa5e77adf388e8f4019742ba67`.
-These identify this local execution, not later hosted build hashes or
-reproducible-build guarantees. No earlier accepted consumer was changed,
-migrated or reseeded.
+The corrected local wheel SHA-256 is
+`41b21991ca7c29c77a88c10457e11d2443142fafc1ac39f57804f146a0232e0c`.
+Its sampled repository fingerprint remained
+`14d07670ceb157a26812903a43d7c6302ae3ad6c21657c6cb24f7c0593d708bb`,
+and retry manifest SHA-256 is
+`4d21d57d097e27cc6c9e7608eb48222a1d2683628107cc84e0f7dc3baa31f7e3`.
+The initial wheel
+`03cd62a233a07debaf5a467f362e78a0f2f38412cc1197d5993b4d41de5010ba`
+and failed campaign remain retained. These identify actual builds, not
+reproducible-build guarantees.
 
-## History contract and PostgreSQL checks
+The backend was not rerun locally merely because frontend response cleanup
+changed. Reuse requires the recorded 263-pass result at 3b9ea4c, an empty diff
+for backend source/tests/consumer/pins, and identical packaged Python/SQL member
+sets and bytes between the initial and corrected wheels. The final identity
+check records that distinction explicitly. Hosted final-head and main workflows
+still execute the complete backend suite independently.
 
-The original detail route now returns at most 20 events, together with
-continuation metadata. The separate history route defaults to 20 and accepts
-at most 50. Each page selects the latest or next older window and returns its
-events in ascending version order. Queries fetch one lookahead row to decide
-whether a continuation exists, without a total count or offset.
+## Server context and installed consumer
 
-Twenty-four new test instances cover complete 65-event traversal at page sizes
-1, 7, 20 and 50, empty and exact page boundaries, equal timestamps and legacy
-version gaps without invented creation events. Authentication and same-organization
-record lookup precede history-query validation. Both reviewers can traverse their
-own organization's records. Foreign/missing records return the same 404.
-Cross-record, cross-organization and page-size context mismatches are rejected.
-Forged headers and cursor fields do not provide access. Full business rows are
-compared around read and denial scenarios.
+Eighteen new API test instances cover marker representation and stability,
+anonymous and authenticated session rotation, same-actor new sessions, all four
+private read routes, optional legacy clients, malformed/duplicate/oversized
+headers, stale logout, authentication precedence and login rejection before
+CSRF/password admission. They also check all three business mutation routes,
+unreserved denied keys, unchanged historical receipts and authorized current-
+context replay. Full business/security row comparisons check denial side
+effects. A focused preliminary source run passed these 18 in 15.19 seconds.
 
-Validation checks cover unknown/duplicate query parameters, malformed UTF-8,
-base64url aliases and padding, oversized/deep JSON, duplicate or extra JSON
-fields, integer types and ranges, invalid UUIDs and version relationships.
-Generic errors do not echo submitted values. A valid own-context cursor can
-skip rows or reach an empty page. This is intentional for an unsigned position,
-not evidence that a cursor authorizes access. A sparse SQL boundary fixture
-checks the admitted maximum PostgreSQL integer without claiming billions of
-events were generated or scanned.
+The marker is domain-separated consistency metadata derived from the stored
+session hash. It exposes neither that hash, the bearer cookie nor CSRF secret.
+It cannot authenticate, choose an organization, provide role authority or
+replace CSRF. Header omission remains compatible with existing API consumers.
+A same-session database role or organization change does not rotate the marker;
+current server policy and authoritative principal facts remain independent.
 
-One case commits a real assignment between page requests. The original browse
-still traverses exactly its initial versions, while refresh includes the new
-version. Another test places a separate committed SQL append precisely after
-the real detail record read and before its event query. The first response
-keeps the older record version and fence, then a fresh detail request sees the
-append. This ordering is explicit and does not rely on a delay or unfinished
-thread as its witness.
+The corrected consumer runs from installed site-packages and performs a real
+same-actor login rotation. It checks stale-marker 409 without value echoes,
+authoritative session recovery, cookie-only legacy access and correct-context
+reads. Operator and reviewer contexts survive an actual API-process restart,
+and the retired marker remains denied. Three successful sign-ins and 37 real
+failed verifications fill the global admission budget. This is distinct from
+the API test that constructs another app instance using the same cookie.
 
-The fence holds later application appends outside an existing browse. It is
-not a full database snapshot. Joined names are current, and privileged database
-changes are outside the application contract. A returned-row cap does not prove
-scan cost, latency, throughput or denial-of-service resistance.
+Retained installed checks also cover queue continuation, 45 real API-generated
+events across restart, append fencing, historical creation receipts, current
+reviewer denials and business-row preservation. Only disposable admission
+timestamps are expired before the browser campaign. Earlier accepted databases
+and the failed/baseline consumers are not reset as fresh fixtures.
 
-## Installed consumer and browser evidence
+## Browser behavior and its limits
 
-The ordinary installed consumer creates one record and performs 44 real
-assignment requests, giving it 45 saved events. It captures the bounded detail
-and cursor, restarts the API process, then reads the remaining pages and checks
-all versions 1 through 45 exactly once. A subsequent assignment produces version
-46. The previous continuation stays fenced, while refresh includes 46. Replaying
-the old creation request still returns its historical version-1 receipt, and
-the consumer reads current state separately.
+The 42 serial journeys retain the previous 29 and add 13 cases. Desktop and
+390-pixel tests use two actual pages in one browser context. The first document
+remains open while another page signs out and signs into Harbor. Its old private
+record, draft and filters retire, and Harbor's reviewer identity and queue
+replace the earlier view. A document nonce confirms that the first page was
+not reloaded. Observed channel messages contain only the declared version and
+type, with no marker, identity, role or shipment data.
 
-The consumer also retains operator and reviewer access checks, business-denial
-snapshots, durable queue continuation and login admission across API restart.
-Two successful sign-ins and 38 actual failed verifications fill the global
-budget. Only that disposable consumer's admission fixture timestamps are expired
-before the separate browser campaign.
+Three fixtures make the channel missing, its constructor throw, or its send
+operation throw. Lifecycle notifications are deliberately muted in those cases
+to isolate the real server context-mismatch path. A stale UI request receives
+actual 409 `session_changed`, then the page recovers the actual account. This is
+a controlled failure fixture, not a cross-browser compatibility result.
 
-The 29 serial browser journeys retain all earlier 25. The added desktop and
-390-pixel reviewer cases traverse three pages against actual API responses,
-check exact versions and bounded rendered rows, move back through the same
-boundary, and refresh to newer history. A designated SQL fixture supplies 45
-explicitly synthetic events and a controlled version-46 append. These fixture
-events are test setup, distinct from the installed consumer's real API requests.
+Three cases hold actual queue, detail or history responses, sign into the next
+account, and deliver the old responses after the new account is active on the
+same document. The new identity, queue and selected history remain correct.
+Two further cases actually commit an assignment before dropping or delaying its
+response. Session change retires the local retry with possible-prior-commit
+wording, including a same-actor new session. Exactly one assignment attempt is
+observed, with no automatic replay under the next context.
 
-A substituted 503 response tests page-error recovery without losing the current
-record or unsent draft. Retrying loads the actual older page. A subsequent real
-assignment resets history to the latest page. A delayed real history response
-is delivered after a record switch, same-user refresh and logout, and is ignored.
-A later clean other-organization login is also checked. That test does not
-deliver the old response after the new account has already signed in.
+Other cases reject malformed hints, coalesce a held burst of 20 valid hints,
+retain drafts during matching-session checks, recover manually after a
+substituted session-check 503, and handle a real incorrect-password 401 without
+automatic session GET or POST retry. Focus, visibility and persisted-pageshow
+events are dispatched by the tests. They are not actual mobile suspension or
+back/forward-cache restoration trials.
 
-The [desktop history](assets/desktop-history.png) and
-[390-pixel history](assets/narrow-history.png) captures were generated from those
-journeys and visually inspected. They show the oldest page of the synthetic
-record at version boundaries 45 and 46 respectively. This is isolated headless
-evidence, not physical-device, screen-reader or translation-provider acceptance.
+The [desktop session-change](assets/desktop-session-change.png) and
+[390-pixel session-change](assets/narrow-session-change.png) captures were
+generated from the two-page journeys and visually inspected. They show synthetic
+Harbor records under Harbor's reviewer identity and the recovery notice. No
+credential, marker, private path, browser chrome or unrelated desktop content is
+included.
 
-The UI renders one bounded page and retains only its first and current event
-pages, plus cursor positions. Cursor metadata grows with visited pages. Cached
-page return is not another server permission check or instant revocation.
+Browser messaging is advisory and partition-scoped. No instant frozen-page
+erasure, cross-device synchronization or serialization of concurrent
+authentication responses is claimed. Discarding an old JavaScript result cannot
+undo a browser-applied Set-Cookie or reverse an admitted database commit. Epoch
+guards apply after transitions the tab observes. No persistent browser storage
+or new authorization system is added.
 
-## Adverse observations, attribution and hosted checks
+## Adverse results, review and hosted evidence
 
-The initial source-install attempt used PATH's Python 3.11.8 and correctly
-failed the package's Python requirement. That unused environment and refusal
-log were retained. The separate explicit Python 3.13.3 environment then passed
-24 focused source history checks in 23.38 seconds, followed by the complete
-fresh installed campaign above. No acceptance is attributed to Python 3.11.
-The TestClient/httpx deprecation and terminal-color warnings remain recorded.
+The first browser campaign timed out in existing case 21 after reaching the
+correct Harbor label and seven rows. Cleanup masked the precise wait site.
+The new response helper could reject a stale response after headers without
+consuming its body. The correction consumes the admitted body before rejecting
+the stale result. The unchanged complete-delivery and no-stale-render assertions
+then passed, with diagnostic stages confirming headers, body/render settlement
+and a fresh Harbor search. No timeout was increased or test removed.
 
-The MIT license, dependency pins, notices, schema 4 and earlier migration/fixture
-bytes are unchanged. Credentials, raw private logs, generated connection records
-and databases stay outside Git. Test controls require explicit disposable URLs
-and supply no HTTP administration endpoints.
+Source review also caught ordinary invalid-credentials 401 being classified as
+a session transition. That was corrected before acceptance and the dedicated
+manual-retry browser case passed. Package/doc version-edit mistakes were caught
+by diff review and corrected before the implementation commit. Dependency-lock
+comparison confirms only the two project-version fields changed. TestClient and
+terminal-color warnings remain. No failed or unexecuted result is relabeled.
 
-Code Review exposed no callable tool. The semantic/security review came from a
-separate agent, while GitHub provides actual CI diagnostics. One scoped Consensus
-query received the current included-search quota refusal, with reset November 1.
-No paper result or paid escalation is claimed. Original PostgreSQL and OWASP
-documentation supports design rationale, separate from executed acceptance.
+A separate non-author reviewed the composed source, assertions, evidence and
+public claims. Code Review exposed no callable semantic tool. The independent
+agent review and GitHub's actual CI diagnostics are labeled separately. The
+same-day Consensus exhausted-search receipt is reused as an access limit, not a
+new paper result. Original WHATWG/MDN/OWASP sources support rationale, separately
+from executed application behavior.
 
-The [Actions workflow](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
-rebuilds on Ubuntu 24.04 with the pinned PostgreSQL 18.1 container and repeats the
-installed suite, separate consumer and all 29 browser journeys. Hosted execution
-must match the final PR/main revision and remains separate from this Windows
-campaign. See the current run pages for actual tested identities and results.
-Source tags identify revisions. Actions artifacts expire and are not permanent
-release assets. No public application hosting, production assurance, offensive
-capability, employer qualification or awarded achievement is established by
-these checks. See [limitations](LIMITATIONS.md).
+MIT licensing, dependency pins, notices, schema 4, migrations and historical SQL
+fixtures are unchanged. The [Actions workflow](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
+rebuilds on Ubuntu 24.04 with PostgreSQL 18.1 and repeats the complete backend
+suite, installed restart consumer and all 42 journeys. Hosted results must
+match the final head and merge. See actual run pages for their tested identities
+and outcomes. Tags identify source; Actions artifacts expire and are not
+permanent release assets. Production hosting, offensive-security qualification,
+defense deployment, employer endorsement and GitHub achievement awards remain
+outside these checks. See [limitations](LIMITATIONS.md).
