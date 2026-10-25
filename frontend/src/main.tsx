@@ -249,7 +249,7 @@ function App() {
   }, [clearPrivateState]);
 
   const retireReadOnlyIntent = useCallback((value: Session) => {
-    if (value.user?.role === 'reviewer' && (pendingRef.current || mutationLock.current)) {
+    if (value.user?.role === 'reviewer' && pendingRef.current) {
       // A successful session read can remove replay permission before a POST
       // reports read_only. Retire its epoch too, so a delayed completion cannot
       // restore the old operator view or clear a newer action's busy state.
