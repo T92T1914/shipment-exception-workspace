@@ -171,6 +171,14 @@ form > label:not(:first-child) { margin-top: 1.1rem; }
 .history-list p { font-size: .79rem; line-height: 1.6; overflow-wrap: anywhere; }
 .history-list .history-note { margin-top: .4rem; color: #526b75; white-space: pre-wrap; }
 .history-list .history-meta { color: #768c92; font-size: .67rem; margin-top: .35rem; }
+.history-pages { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .65rem; margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.history-pages .button { flex: 1 1 110px; min-height: 40px; font-size: .72rem; }
+.history-pages > span { color: #5e767e; font-size: .72rem; white-space: nowrap; }
+.history-boundary { margin-top: .8rem; color: #657d85; font-size: .72rem; line-height: 1.6; }
+.history-error { padding: .8rem; border: 1px solid #e2b5a4; border-radius: 6px; background: #fff7f3; }
+.history-error p { color: #8a4832; font-size: .8rem; line-height: 1.6; }
+.history-error > div { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .7rem; }
+.history-error .button { flex: 1 1 120px; font-size: .72rem; }
 .empty-detail { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; min-height: 455px; max-width: 335px; margin: auto; gap: .8rem; }
 .empty-detail h2 { font-size: 1.25rem; }
 .empty-detail p { color: #6c8389; font-size: .86rem; line-height: 1.75; }

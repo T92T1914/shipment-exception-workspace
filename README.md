@@ -35,7 +35,8 @@ v0.1.0 captures remain in `docs/assets` with their original bytes.
    event at version 1.
 4. Assign it to a member of the same organization, then resolve it with a short
    explanation. The detail view retains the version and
-   audit history after a reload.
+   saved history after a reload. Use **Older changes** and **Newer changes** to
+   inspect a long history in pages of up to 20 changes.
 5. If another tab changes the record first, refresh before editing again. If a
    response is interrupted, use **Retry same change** while that page remains open.
 
@@ -125,6 +126,34 @@ The [desktop page-two capture](docs/assets/desktop-queue-page-two.png) and
 [narrow literal-search capture](docs/assets/mobile-queue-literal.png) show the
 larger synthetic queue used in the installed browser checks.
 
+## Browse change history
+
+Opening a record starts with its latest 20 saved changes. Each page lists those
+changes from oldest to newest, with **Older changes** and **Newer changes** to
+move between pages. The displayed count describes that page. A record's current
+version and details remain separate from an older history page.
+
+The first page establishes a version boundary for that browse. Later changes
+stay outside it until **Refresh workspace**, which reloads current access,
+details and the latest history. An operator's saved mutation also starts a new
+history browse. Reading another history page preserves an unsent assignment or
+resolution draft. A failed page request has its own **Retry history page** action
+and leaves the current record available.
+
+The detail API returns its latest 20 events in `events`, plus `history` metadata
+with `next_cursor`, `page_size` and `through_version`. The continuation route is
+`GET /api/exceptions/{id}/history?limit=20&cursor=...`; its default is 20 and its
+maximum is 50. Both routes check the authenticated organization and permit
+reviewers to read their own records. A cursor supplies a position, never access.
+
+The version boundary holds back later application appends. It does not freeze
+joined user names or create a full database snapshot. This limits returned and
+rendered events without claiming a database scan, latency or load bound. See the
+[history design](docs/DESIGN.md#bounded-change-history) and
+[limitations](docs/LIMITATIONS.md). The [desktop history](docs/assets/desktop-history.png)
+and [narrow history](docs/assets/narrow-history.png) captures use a dedicated
+synthetic long-history record.
+
 ## Sign-in admission
 
 Before checking a password, the server reserves a PostgreSQL admission slot.
@@ -163,7 +192,7 @@ The helper creates its own loopback cluster and two new databases. It does not
 start or alter an installed PostgreSQL service.
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v050'
+$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v060'
 py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
@@ -176,7 +205,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.5.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.6.0-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -228,7 +257,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.5.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.6.0-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -243,7 +272,7 @@ origin as the API, so the installed application needs no Vite development server
 
 ## Use an existing database
 
-Version 0.5.0 requires schema version 4. An existing schema 1, 2 or 3 database
+Version 0.6.0 continues to use schema version 4. An existing schema 1, 2 or 3 database
 needs the explicit migration below. Stop every application process using the
 dedicated database before changing its installed environment, and make a private
 backup with your PostgreSQL backup tooling before migration. Keep
@@ -251,18 +280,18 @@ the backup, connection record and existing credentials outside Git. The migratio
 command does not make a backup, and this release does not qualify a
 backup-restoration or downgrade procedure.
 
-Build the v0.5.0 wheel as above, then install it into a new environment. Here,
+Build the v0.6.0 wheel as above, then install it into a new environment. Here,
 `$state` names the existing private state directory, not the fresh-start example.
 Load `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v050'
+$upgradeEnv = Join-Path $state 'consumer-env-v060'
 if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.5.0-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.6.0-py3-none-any.whl
 ```
 
 For schema 1, 2 or 3, run the explicit migration before serving. An existing
@@ -316,7 +345,9 @@ $env:SHIPMENT_TEST_DATABASE_URL = $db.test_url
 The suite includes operator/reviewer access, role-change ordering, denied receipt
 replay, organization isolation, session and CSRF rejection, stale
 versions, creation and reference races, conflicting retry keys, rollback and
-schema-upgrade preservation. Installed consumer and headless acceptance exercise
+schema-upgrade preservation. History checks cover bounded detail responses,
+complete older-page traversal, strict untrusted cursors and a version fence
+across later appends. Installed consumer and headless acceptance exercise
 the built application outside the checkout, including desktop, narrow mobile,
 stale tabs and interrupted responses.
 Admission checks cover durable budgets, concurrent reservations, expiry and
@@ -338,6 +369,31 @@ exact six-account identity/organization set, then changes only Alex's role for
 the demotion/promotion cases. It resets no domain records, sessions, history or
 receipts and supplies no HTTP endpoint. The guard is not permission to use it
 against a retained accepted consumer or other data.
+
+History scenarios require `WORKSPACE_HISTORY_FIXTURE_URL` pointing to that same
+fresh disposable installed consumer. The helper checks schema 4 and the exact
+six-account identity/organization set, creates only its designated
+`NL-HISTORY-001` record with 45 synthetic events, then permits one controlled
+append at version 46. Those events are test setup, not real operational history
+or requests made through the application. Existing workflow, sessions and retry
+receipts are not reset. It exposes no HTTP control and is not a recovery tool.
+
+After preparing that dedicated installed consumer and its private environment,
+the browser setup includes all fixture targets explicitly:
+
+```powershell
+$env:WORKSPACE_FIXTURE_PYTHON = $consumerPython
+$env:WORKSPACE_LOGIN_FIXTURE_URL = $db.consumer_url
+$env:WORKSPACE_QUEUE_FIXTURE_URL = $db.consumer_url
+$env:WORKSPACE_ROLE_FIXTURE_URL = $db.consumer_url
+$env:WORKSPACE_HISTORY_FIXTURE_URL = $db.consumer_url
+```
+
+The same variable names apply to the POSIX route. These fixture values contain
+credentials. Use only the fresh disposable browser database and keep them out of
+public logs. The configured browser route is isolated, headless and one worker.
+See the verification record for its exact installed-consumer preparation,
+base URL, generated password, browser executable and executed results.
 
 The queue fixture inserts 54 Northline and four Harbor records and refuses a
 database already containing its reference prefixes. It adds no invented audit

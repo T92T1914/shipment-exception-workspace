@@ -34,8 +34,24 @@ practice or suitability for sensitive logistics data.
   durable bookmarks. Pages form a live view rather than a snapshot. An insertion
   before the current position needs a refresh, status changes can alter result
   membership, and fetching a previous page again can produce different contents.
+- Detail returns only the latest 20 events, with history continuation metadata.
+  The history API defaults to 20 and permits at most 50 events per page. The UI
+  shows one 20-event page, ascending from oldest to newest within that page,
+  and moves between newer and older pages. The count describes shown events,
+  not a global total. There is no history search, arbitrary sort or export.
+- History continuation is fenced at its initial record version, so later
+  application appends need an explicit refresh to appear. That fence does not
+  freeze joined user names or provide a full database snapshot. History cursors
+  are unsigned, readable positions bound to the organization, record and page
+  size, not permissions, secrets or durable bookmarks. A valid own-context
+  cursor may skip rows. Privileged edits remain outside the application boundary.
+- History event caching retains its first bounded page and current bounded page,
+  rather than accumulating all visited events. Cursor positions still grow with
+  visited pages. Returning to the cached first page does not perform another
+  server permission check. Account/session changes and refresh clear that state,
+  but this is not an instantaneous revocation or offline recovery guarantee.
 - A page-size cap does not bound database scanning, sorting or latency. No new
-  queue index, measured speed improvement or production capacity is claimed.
+  queue/history index, measured speed improvement or production capacity is claimed.
   There is no carrier feed, file upload, notification system, forecasting, AI
   feature or general workflow engine.
 - A pending retry is held only in the current page's memory. Closing or reloading
@@ -81,7 +97,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.5.0 requires schema 4. The explicit transactional upgrade from schema
+- Version 0.6.0 retains schema 4. The explicit transactional upgrade from schema
   1, 2 or 3 preserves existing users as operators and gives future omitted roles
   a reviewer default. Stop application processes and privately back up the
   dedicated database before that upgrade. There is
@@ -122,6 +138,16 @@ Alex's role for the declared demotion/promotion scenarios, without resetting
 domain records, sessions, history or receipts. These guards do not authorize
 using it against a retained accepted consumer or operational state. It is test
 setup, not an application endpoint or role-management feature.
+
+The history browser fixture requires `WORKSPACE_HISTORY_FIXTURE_URL`, schema 4
+and the exact six synthetic account IDs, organizations and emails. It creates
+the designated `NL-HISTORY-001` record and 45 synthetic events, then permits one
+controlled append at version 46. Those events are explicitly test setup, not
+operational history or application API requests. It refuses an existing
+designated record during setup and does not reset existing workflow, sessions
+or receipts. Its guards do not authorize use against a retained accepted
+consumer or another project's data. This fixture exposes no HTTP controls and
+does not establish scale or query performance.
 
 Admission tests may set counter expiries or substitute a test clock inside a
 disposable database scenario. Those checks exercise declared boundaries without

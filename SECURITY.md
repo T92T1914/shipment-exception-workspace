@@ -93,6 +93,41 @@ existing database statement timeout is a separate resource guard, not proof of
 availability under load. Queue routes have no new rate limiter or index, and
 this release makes no denial-of-service resistance or query-performance claim.
 
+## History queries and positions
+
+Detail responses include only the latest 20 events and continuation metadata.
+The separate history route defaults to 20 and permits at most 50. Every remote
+request authenticates the current session, resolves the exception within that
+organization and independently scopes the event query. Operators and reviewers
+can read their own records. Foreign and missing records receive the same 404
+before history-cursor validation. A cursor cannot choose another organization
+or supply authentication.
+
+History cursors are readable, unsigned positions, with a 1,024-character cap
+and checked unpadded base64url/strict UTF-8 transport. Their exact fields bind
+organization, exception, page size, initial upper version and older-page
+position. Duplicate keys, extra fields, invalid strict integers, malformed
+encodings and mismatched context receive generic HTTP 422
+`invalid_history_query` without input echoes. Unknown and duplicate query
+parameters are rejected too. The server does not need an anchor lookup, and a
+caller may construct another valid position inside its own record's history.
+
+The initial version fence keeps later application appends out of an existing
+browse until refresh. It does not freeze user names, provide a full database
+snapshot or protect events from a privileged database operator. Pages retain
+ascending order within the latest or older selected window. No total is
+calculated. Bounded output does not establish a query-cost, latency, rate or
+load guarantee, and history requests have no new rate limiter.
+
+The UI renders one bounded event page, retaining the first page and current
+page plus positions for visited pages. It does not persist them to browser
+storage. Cursor metadata still grows with navigation. Record changes, refresh,
+saved mutations and private-state clearing invalidate earlier history work.
+Late responses must match the user, record and request generation before being
+shown. A failed older-page request has a separate retry path and preserves the
+current record and unsent draft. Returning to the cached first page within the
+same browse is not another server permission check or instant revocation.
+
 ## Login admission and availability
 
 The server reserves a durable database slot before Argon2 verification, with
@@ -158,6 +193,15 @@ does not reset domain records, sessions, history or receipts and supplies no
 HTTP control endpoint. Its guard does not make it safe for a retained accepted
 consumer or another project's data.
 
+The history browser fixture requires `WORKSPACE_HISTORY_FIXTURE_URL`, schema 4
+and that same exact six-account identity set. It creates only its designated
+`NL-HISTORY-001` record with 45 synthetic events and permits one controlled
+append at version 46. Setup refuses an existing designated record. These are
+labeled fixture events rather than operational history or requests through
+the API. Existing workflow, sessions and receipts are not reset. Run it only
+against a fresh disposable browser consumer, never a retained accepted database.
+It provides no HTTP control or recovery operation.
+
 The demo seeder requires a password of at least 12 characters. Repeated seeding
 does not change an existing account's password or role. Use fresh isolated demo
 state
@@ -165,7 +209,7 @@ when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.5.0 requires schema version 4. For schema 1, 2 or 3, stop every
+Version 0.6.0 retains schema version 4. For schema 1, 2 or 3, stop every
 application process using the dedicated database and take a private backup before
 running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.
