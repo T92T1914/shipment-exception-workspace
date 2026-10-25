@@ -1,13 +1,14 @@
-# Reviewer access verification
+# Bounded history verification
 
-The October 24, 2026 local campaign tested implementation commit
-[`333b98300ffa4f36deb2905c69fa851310781b8c`](https://github.com/T92T1914/shipment-exception-workspace/commit/333b98300ffa4f36deb2905c69fa851310781b8c)
-through a fresh ordinary v0.5.0 wheel installed outside the checkout. All seven
-sequential manifest checks passed with unchanged before/after source samples.
-This evidence note and two synthetic captures were added afterward. Earlier
+The October 25, 2026 local campaign tested implementation
+[`ab7c6b8dff04788348f3272dfb12af1b0f1e3072`](https://github.com/T92T1914/shipment-exception-workspace/commit/ab7c6b8dff04788348f3272dfb12af1b0f1e3072)
+through an ordinary v0.6.0 wheel installed into a fresh environment outside the
+checkout. All seven sequential manifest checks passed with unchanged sampled
+source contents. This evidence note and its two synthetic captures were added
+afterward. Earlier [v0.5.0](VERIFICATION-v0.5.0.md),
 [v0.4.0](VERIFICATION-v0.4.0.md), [v0.3.0](VERIFICATION-v0.3.0.md),
-[v0.2.0](VERIFICATION-v0.2.0.md) and [v0.1.0](VERIFICATION-v0.1.0.md) records retain
-their historical scope.
+[v0.2.0](VERIFICATION-v0.2.0.md) and [v0.1.0](VERIFICATION-v0.1.0.md) records keep
+their original results and scope.
 
 ## Executed local results
 
@@ -20,110 +21,128 @@ browser profile, clipboard, audio or visible application was used.
 | Check | Actual result |
 | --- | --- |
 | TypeScript/Vite | Production build passed |
-| Wheel/source archive | Built v0.5.0; package source/SQL identity, built UI, notices and all three immutable schema fixtures checked |
-| Fresh installation | Imported v0.5.0 from the external environment's site-packages; pip check passed |
-| Installed PostgreSQL suite | 221 passed in 151.51 seconds, with one retained TestClient deprecation warning |
-| Installed restart consumer | Operator receipt/admission/cursor behavior and reviewer reads/business-write denials passed before and after API restart |
-| Built browser journeys | All 25 passed in 40.0 seconds, including desktop/narrow reviewers, stale access and denied replay after an actual interrupted commit |
-| Independent source and claim review | Separate agent found no remaining material semantic, authorization, privacy or public-claim issue in the inspected composition |
+| Wheel/source archive | Built v0.6.0 and checked packaged Python/SQL source identity, built UI, notices and all three immutable migration fixtures |
+| Fresh installation | Imported v0.6.0 from external site-packages on Python 3.13.3; pip check passed |
+| Installed PostgreSQL suite | 245 passed in 156.33 seconds, with one retained TestClient deprecation warning |
+| Installed restart consumer | Retained workflow/reviewer/admission checks plus bounded detail, three-page history, cursor continuation across API restart and append fencing passed |
+| Built browser journeys | All 29 passed in 44.7 seconds, retaining the prior 25 and adding desktop/narrow history, failure recovery and delayed-response cases |
+| Independent source review | A separate non-author found no remaining semantic or authorization blocker in the inspected implementation and test design |
 
-The local wheel SHA-256 is
-`d35ef148acc2145fb829a3b4e47fc09d1fc4e42be94c3e4edc8114c6d853213e`.
-The repository content fingerprint remained
-`1392ec7b15c7918616958f823e2c9531a590b56522cac620d7aa6cbe797765d7`.
-Manifest SHA-256 was
-`e2e99d79d167ba0e27c71c6fbd352578612a46dda14776729d6cf88ca79f5fed`.
-These identify the executed campaign, not reproducible builds or later hosted
-archive hashes. The owned app and new database cluster were stopped and retained.
-No previously accepted consumer was migrated or reseeded.
+Local wheel SHA-256 is
+`f1acabef55503c4f9bff58532849ed0341cf0af0142716a7cc5d01bf5a32699d`.
+The sampled repository fingerprint remained
+`c3be382a255f1dc78868d0fa1b9570f9bd723bda5567267214af48ea2dfef9d4`.
+Manifest SHA-256 is
+`aae2a2344006d0bae78beda8ac304557e976c1fa5e77adf388e8f4019742ba67`.
+These identify this local execution, not later hosted build hashes or
+reproducible-build guarantees. No earlier accepted consumer was changed,
+migrated or reseeded.
 
-## Permission and transaction checks
+## History contract and PostgreSQL checks
 
-The suite retains the prior workflow, queue, admission and organization checks.
-Fourteen new reviewer test instances cover both organizations' own reads and
-foreign-detail 404s, all three valid business-mutation routes, forged claims,
-current role changes on an existing cookie, denied keys, saved receipts across
-downgrade/restored access, default roles and repeated seeding. Complete exception,
-event and receipt rows are compared around denials. Session/authentication
-maintenance is separate, so these are not claims of zero database writes.
+The original detail route now returns at most 20 events, together with
+continuation metadata. The separate history route defaults to 20 and accepts
+at most 50. Each page selects the latest or next older window and returns its
+events in ascending version order. Queries fetch one lookahead row to decide
+whether a continuation exists, without a total count or offset.
 
-The downgrade-first race captures an already-read operator principal, holds an
-ordinary non-key role update, then requires actual PostgreSQL lock-wait evidence
-before committing the downgrade. The waiting mutation denies without a business
-effect. The mutation-first race holds the actual exception row, confirms the
-authorized mutation is waiting there, and confirms the competing role update
-waits behind that mutation. Releasing the business row permits its authorized
-commit before the downgrade. Events, finite diagnostics and cleanup bound both
-scenarios. A sleep or unfinished future alone is not accepted as proof of locking.
+Twenty-four new test instances cover complete 65-event traversal at page sizes
+1, 7, 20 and 50, empty and exact page boundaries, equal timestamps and legacy
+version gaps without invented creation events. Authentication and same-organization
+record lookup precede history-query validation. Both reviewers can traverse their
+own organization's records. Foreign/missing records return the same 404.
+Cross-record, cross-organization and page-size context mismatches are rejected.
+Forged headers and cursor fields do not provide access. Full business rows are
+compared around read and denial scenarios.
 
-A reviewer denial also completes while an uncommitted conflicting receipt key
-is held, checking that authorization precedes reservation. Committed create,
-assign and resolve receipts are denied after downgrade, remain unchanged, and
-can replay their historical results after operator access returns. These are
-specific application/transaction tests, not a general revocation or audit claim.
+Validation checks cover unknown/duplicate query parameters, malformed UTF-8,
+base64url aliases and padding, oversized/deep JSON, duplicate or extra JSON
+fields, integer types and ranges, invalid UUIDs and version relationships.
+Generic errors do not echo submitted values. A valid own-context cursor can
+skip rows or reach an empty page. This is intentional for an unsigned position,
+not evidence that a cursor authorizes access. A sparse SQL boundary fixture
+checks the admitted maximum PostgreSQL integer without claiming billions of
+events were generated or scanned.
 
-Eight new migration instances cover the exact accepted schema-3 fixture,
-explicit upgrade, preserved sessions/receipts/history/admission, operator backfill,
-future reviewer default, repeat migration, competing migrators and a final-stage
-failure starting from each of schemas 1, 2 and 3. Earlier upgrade checks remain.
-The accepted fixture Git blobs are `a5c75d707fa08e65fc6d539424d7be333c8040c4`,
-`c8f6bf47db94ae6b0dffeffd136606df1e2029be` and
-`1cd24211bec132199e87a7f1ad4175be381fbf9d`. Failure fixtures check rollback of the
-whole required chain, including the new role column. Accepted runtime databases
-are not migration fixtures.
+One case commits a real assignment between page requests. The original browse
+still traverses exactly its initial versions, while refresh includes the new
+version. Another test places a separate committed SQL append precisely after
+the real detail record read and before its event query. The first response
+keeps the older record version and fence, then a fresh detail request sees the
+append. This ordering is explicit and does not rely on a delay or unfinished
+thread as its witness.
 
-## Installed browser and recovery evidence
+The fence holds later application appends outside an existing browse. It is
+not a full database snapshot. Joined names are current, and privileged database
+changes are outside the application contract. A returned-row cap does not prove
+scan cost, latency, throughput or denial-of-service resistance.
 
-The consumer serves packaged assets from its installed environment, signs in an
-operator and reviewer, and checks reviewer reads plus three valid denied writes
-against full business-row snapshots before and after API restart. Two successful
-sign-ins and 38 real failed verifications fill the global login budget. Restart
-preserves the exhausted budget and authenticated workflow. Only disposable
-admission timestamps expire before the separate browser campaign.
+## Installed consumer and browser evidence
 
-The 25 serial journeys retain the previous 21 and add desktop/narrow reviewer
-reading, queue navigation, history and logout with no business POST. Direct
-`#new` navigation cannot expose intake. A stale operator's actual write receives
-403 after fixture demotion; explicit refresh observes current access. Another
-case obtains a real committed assignment response, drops its delivery, demotes
-the actor, and sends the same retry key/body. The real 403 leaves the committed
-record/history unchanged and the UI explains that the earlier change may be
-saved. It retires the tab's intent and performs no automatic further POST.
+The ordinary installed consumer creates one record and performs 44 real
+assignment requests, giving it 45 saved events. It captures the bounded detail
+and cursor, restarts the API process, then reads the remaining pages and checks
+all versions 1 through 45 exactly once. A subsequent assignment produces version
+46. The previous continuation stays fenced, while refresh includes 46. Replaying
+the old creation request still returns its historical version-1 receipt, and
+the consumer reads current state separately.
 
-The [desktop reviewer](assets/desktop-reviewer.png) and
-[390-pixel reviewer](assets/narrow-reviewer.png) captures were generated from
-those checks and visually inspected. They contain synthetic records. Native
-translation-hint, viewport-fit, stale-response and ordinary operator retry checks
-remain. This is isolated headless evidence, not physical-device, screen-reader
-or translation-provider acceptance.
+The consumer also retains operator and reviewer access checks, business-denial
+snapshots, durable queue continuation and login admission across API restart.
+Two successful sign-ins and 38 actual failed verifications fill the global
+budget. Only that disposable consumer's admission fixture timestamps are expired
+before the separate browser campaign.
 
-## Adverse results, review and limits
+The 29 serial browser journeys retain all earlier 25. The added desktop and
+390-pixel reviewer cases traverse three pages against actual API responses,
+check exact versions and bounded rendered rows, move back through the same
+boundary, and refresh to newer history. A designated SQL fixture supplies 45
+explicitly synthetic events and a controlled version-46 append. These fixture
+events are test setup, distinct from the installed consumer's real API requests.
 
-The first source regression campaign reported nine failures and 198 passes.
-All nine failures were retained literal-data tests expecting four users after
-the seed gained two reviewers. Three exact-count assertions now expect six,
-preserving their users-table and literal-data checks. The focused follow-up
-passed 31 checks, followed by the complete installed campaign above. The earlier
-failures remain retained rather than being relabeled as passes.
+A substituted 503 response tests page-error recovery without losing the current
+record or unsent draft. Retrying loads the actual older page. A subsequent real
+assignment resets history to the latest page. A delayed real history response
+is delivered after a record switch, same-user refresh and logout, and is ignored.
+A later clean other-organization login is also checked. That test does not
+deliver the old response after the new account has already signed in.
 
-The TestClient/httpx deprecation and browser NO_COLOR/FORCE_COLOR warning remain
-in logs. No dependency pins, MIT license or notices changed. Credentials, raw
-private logs, connection records and database files stay outside the repository.
-Fixture helpers require explicit disposable URLs and expose no HTTP controls.
+The [desktop history](assets/desktop-history.png) and
+[390-pixel history](assets/narrow-history.png) captures were generated from those
+journeys and visually inspected. They show the oldest page of the synthetic
+record at version boundaries 45 and 46 respectively. This is isolated headless
+evidence, not physical-device, screen-reader or translation-provider acceptance.
 
-Code Review had no exposed tool in this session. Semantic/security and public
-claim review came from a separate agent; GitHub supplies actual CI diagnostics.
-Neither is a human audit, penetration test, security certification or production
-acceptance. Current primary OWASP/PostgreSQL/FastAPI sources support design
-rationale, not measured effectiveness or employer endorsement.
+The UI renders one bounded page and retains only its first and current event
+pages, plus cursor positions. Cursor metadata grows with visited pages. Cached
+page return is not another server permission check or instant revocation.
+
+## Adverse observations, attribution and hosted checks
+
+The initial source-install attempt used PATH's Python 3.11.8 and correctly
+failed the package's Python requirement. That unused environment and refusal
+log were retained. The separate explicit Python 3.13.3 environment then passed
+24 focused source history checks in 23.38 seconds, followed by the complete
+fresh installed campaign above. No acceptance is attributed to Python 3.11.
+The TestClient/httpx deprecation and terminal-color warnings remain recorded.
+
+The MIT license, dependency pins, notices, schema 4 and earlier migration/fixture
+bytes are unchanged. Credentials, raw private logs, generated connection records
+and databases stay outside Git. Test controls require explicit disposable URLs
+and supply no HTTP administration endpoints.
+
+Code Review exposed no callable tool. The semantic/security review came from a
+separate agent, while GitHub provides actual CI diagnostics. One scoped Consensus
+query received the current included-search quota refusal, with reset November 1.
+No paper result or paid escalation is claimed. Original PostgreSQL and OWASP
+documentation supports design rationale, separate from executed acceptance.
 
 The [Actions workflow](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
-rebuilds on Ubuntu 24.04 with the pinned PostgreSQL 18.1 container, repeats the
-installed suite, installs a separate consumer and runs all 25 journeys. Hosted
-results are separate from Windows acceptance and must match the current revision.
-A tag identifies source; Actions artifacts expire and are not permanent release
-assets. See current PR/main run pages for actual tested identities and outcomes.
-
-Role management, privileged database tampering, instant cancellation of earlier
-effects, general IAM, production deployment, load capacity and offensive/security
-role qualification remain outside this capability. See [limitations](LIMITATIONS.md).
+rebuilds on Ubuntu 24.04 with the pinned PostgreSQL 18.1 container and repeats the
+installed suite, separate consumer and all 29 browser journeys. Hosted execution
+must match the final PR/main revision and remains separate from this Windows
+campaign. See the current run pages for actual tested identities and results.
+Source tags identify revisions. Actions artifacts expire and are not permanent
+release assets. No public application hosting, production assurance, offensive
+capability, employer qualification or awarded achievement is established by
+these checks. See [limitations](LIMITATIONS.md).
