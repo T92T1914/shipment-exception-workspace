@@ -49,7 +49,7 @@ def connect(params):
 
 def identity(params):
     with connect(params) as conn:
-        row = conn.execute("""SELECT inet_server_addr()::text, inet_server_port(),
+        row = conn.execute("""SELECT host(inet_server_addr()), inet_server_port(),
             current_database(), current_user, pg_get_userbyid(datdba), oid
             FROM pg_database WHERE datname=current_database()""").fetchone()
         cluster = conn.execute("SELECT system_identifier::text FROM pg_control_system()").fetchone()[0]
