@@ -49,9 +49,10 @@ same-actor reviewer with no pending intent can keep readable selected detail.
 
 | Local check | Actual result |
 | --- | --- |
-| Build and ordinary installation | v0.8.1 wheel built, installed into a fresh environment outside the checkout and imported from site-packages. Installed restart/workflow consumer passed. |
-| Package identity | All 16 installed package payload members matched the actual wheel. Source archive checks include changed client/test bytes, new guide/restore tools, security notes and migration fixtures. |
-| Full installed browser campaign | All 53 journeys passed, with zero skipped, unexpected or flaky results. These comprise the original 47 and six new controls. |
+| Build and ordinary installation | Initial and final v0.8.1 wheels were installed in separate fresh environments outside the checkout and imported from site-packages. Both installed restart/workflow consumers passed on distinct new databases. |
+| Package identity | All 16 installed package payload members matched their actual wheel. Final installed metadata also matched its wheel and the corrected README. Source archive checks include changed client/test bytes, guide/restore tools, security notes and migration fixtures. |
+| Full installed browser campaign | All 53 journeys passed at the executed source below, with zero skipped, unexpected or flaky results. These comprise the original 47 and six new controls. Later packaging applicability is checked by exact runtime payload identity. |
+| Final package consumer | Two fresh affected desktop/narrow journeys passed through the final installed wheel, with zero skipped, unexpected or flaky results. This is separate from the earlier full 53-journey execution. |
 | Backend applicability | Server code, backend tests, SQL and pins are unchanged apart from package-version metadata. The earlier 271-case execution is labeled reused local evidence, not a new local suite run. |
 | Preservation | Three accepted v0.8.0 artifact digests, 42 selected accepted metadata/credential files and all other worktree identities/status remained equal under the declared checks. No whole-database-tree byte comparison is claimed for this patch. |
 | Owned resources | Both fresh baseline apps and the candidate app were stopped with exact ownership checks. Only the new cluster was stopped, with retained data/environments/logs and no listeners on its recorded owned ports. |
@@ -61,9 +62,19 @@ The execution source was
 The five-entry report sampled fingerprint
 479eb93428c57a633b53322b955584592f7a5441cce5dc65ce162bcda5e3c917
 before/after each check. Browser-reported duration was 96.795 seconds.
-The local wheel SHA256 is
+The initial installed runtime wheel SHA256 is
 a07c28558aca20df5208cbe1ba4c4a016fea2a85b45ea2a8ad5dc71a02ca4e30.
 Later evidence prose and branch naming are separate from that execution.
+
+Packaging review corrected the README's versioned installation directories from
+v080 to unused v081 names, keeping existing installations separate. The final
+wheel includes that corrected README metadata and has SHA256
+856b509a822b3aecfeb49e0f1c0d146544fe6f3437a741d4bb715c7d2a0bc353.
+All 16 application payload members are byte-identical to the initial wheel.
+Its fresh installed restart consumer and two affected desktop/narrow journeys
+passed on another new database. The latter reported 5.123 seconds. This applies
+the earlier complete browser execution by identity, without inventing another
+local 53-journey run. Earlier package bytes and environments remain retained.
 
 ## Six added controls
 

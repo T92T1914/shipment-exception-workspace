@@ -244,7 +244,7 @@ The helper creates its own loopback cluster and two new databases. It does not
 start or alter an installed PostgreSQL service.
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v080'
+$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v081'
 py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
@@ -344,7 +344,7 @@ consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v080'
+$upgradeEnv = Join-Path $state 'consumer-env-v081'
 if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
