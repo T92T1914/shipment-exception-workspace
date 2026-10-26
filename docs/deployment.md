@@ -16,7 +16,16 @@ The proposed continuing demo uses paid web compute `0.5c-512mb` and PostgreSQL c
 
 A free preview is a different finite choice: web sleep after 15 idle minutes, roughly one-minute wake, 750 workspace free hours monthly, and a 1 GB database expiring after 30 days. The upgrade grace period is another 14 days before deletion. It does not provide durable ongoing demo storage or free backups. Do not create keep-alive traffic to evade sleeping. [Free limits](https://render.com/docs/free).
 
-The initial setup job is separately billed at its compute plan's per-second rate. Do not assume a free web service makes that job free. Confirm the job quote and account permissions too. [One-off job behavior and billing](https://render.com/docs/one-off-jobs).
+Free web services cannot run one-off jobs. The selected explicit setup route
+therefore requires paid web compute, even if the database is a finite free
+preview. A fully free web/database option would need a separately reviewed safe
+bootstrap route and is not supplied by this candidate. Do not silently move
+initialization into startup to work around that restriction.
+[Free service restrictions](https://render.com/docs/free#other-limitations).
+
+The initial setup job is separately billed at its compute plan's per-second rate.
+Confirm the job quote and account permissions before creation.
+[One-off job behavior and billing](https://render.com/docs/one-off-jobs).
 
 Required scoped authority is permission to create this web service and this dedicated database in the selected workspace, set their service-scoped environment variables, run one initial setup job, deploy the selected commit, read status/logs and perform one restart acceptance check. Account creation, broad GitHub installation access, payment changes, paid resources or expanded permissions require the corresponding decision. Use an existing appropriate account if one is available. No unrelated services should be inspected or modified.
 
