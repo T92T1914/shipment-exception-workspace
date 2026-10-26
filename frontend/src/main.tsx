@@ -5,7 +5,8 @@ import { adoptSessionContext, captureSessionContext, matchesSessionContext, open
   retireSessionContext, StaleSessionResponse } from './session_sync';
 
 type User = { id: string; name: string; email: string; organization_id: string; organization_name: string; role: 'operator' | 'reviewer' };
-type Session = { authenticated: boolean; csrf_token: string; session_context: string; user?: User };
+type Session = { authenticated: boolean; csrf_token: string; session_context: string; user?: User;
+  demo?: { read_only: true; email: string; password: string } };
 type ShipmentException = {
   id: string; reference: string; summary: string; details: string;
   status: 'open' | 'resolved'; priority: 'high' | 'normal';
@@ -488,7 +489,7 @@ function App() {
     try {
       const result = await request<Session>('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(session.demo ? { email: session.demo.email, password: session.demo.password } : { email, password }),
       });
       if (actionOwner.current !== owner || !matchesSessionContext(snapshot)) return;
       clearPrivateState(); installSession(result); setPassword(''); setNotice(''); setLoginWait(null);
@@ -751,31 +752,32 @@ function App() {
   const events = historyPage?.events ?? [];
   const loginBlocked = loginWait !== null && loginWait.seconds > 0;
   const selectedOutsidePage = !!current && !queueLoading && !queueError && !items.some(item => item.id === current.id);
+  const publicDemo = session?.demo;
 
   return <>
-    <div className="demo-banner"><span className="demo-dot" aria-hidden="true" /> Synthetic workspace <span className="demo-separator">/</span> Fictional organizations and shipment records</div>
+    <div className="demo-banner"><span className="demo-dot" aria-hidden="true" /> {publicDemo ? 'Read-only synthetic demo' : 'Synthetic workspace'} <span className="demo-separator">/</span> Fictional organizations and shipment records</div>
     <header className="app-header">
       <div className="brand"><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><div><p className="eyebrow">Shipment operations</p><p className="brand-title">Exception workspace</p></div></div>
       {session?.authenticated && session.user && <div className="identity"><div><strong>{session.user.organization_name}</strong><span>{session.user.name}</span><span className="access-role">{canMutate ? 'Operator' : 'Read-only reviewer'}</span></div><button className="button subtle" onClick={() => void signOut()} disabled={busy || !!pending}>Sign out</button></div>}
     </header>
 
     {!session?.authenticated ? <main className="login-layout">
-      <section className="login-intro"><p className="eyebrow">Keep the handoff clear</p><h1>One exception.<br />One accountable next step.</h1><p>Review the shipment, assign a teammate, and record how it was resolved. Each saved change keeps its place in the history.</p><div className="intro-flow"><span>Review</span><span aria-hidden="true">/</span><span>Assign</span><span aria-hidden="true">/</span><span>Resolve</span></div><p className="small-print">Local demonstration using synthetic data. No live freight systems are connected.</p></section>
-      <section className="login-card" aria-labelledby="sign-in-title"><p className="eyebrow">Organization access</p><h2 id="sign-in-title">Sign in to the workspace</h2><p className="muted">Use an account and password from your local seed setup.</p>
+      <section className="login-intro"><p className="eyebrow">Keep the handoff clear</p><h1>One exception.<br />One accountable next step.</h1><p>{publicDemo ? 'Browse fictional shipment exceptions, search the queue, and inspect saved ownership, resolution and history.' : 'Review the shipment, assign a teammate, and record how it was resolved. Each saved change keeps its place in the history.'}</p><div className="intro-flow"><span>{publicDemo ? 'Browse' : 'Review'}</span><span aria-hidden="true">/</span><span>{publicDemo ? 'Inspect' : 'Assign'}</span><span aria-hidden="true">/</span><span>{publicDemo ? 'History' : 'Resolve'}</span></div><p className="small-print">{publicDemo ? 'Public synthetic reviewer experience. Do not enter real logistics or personal information.' : 'Local demonstration using synthetic data. No live freight systems are connected.'}</p></section>
+      <section className="login-card" aria-labelledby="sign-in-title"><p className="eyebrow">Organization access</p><h2 id="sign-in-title">{publicDemo ? 'Explore the synthetic workspace' : 'Sign in to the workspace'}</h2><p className="muted">{publicDemo ? 'The public reviewer account is supplied below. Business records are read-only. Sign-in and session state still change.' : session ? 'Use an account and password from your local seed setup.' : 'Confirm the current session to continue.'}</p>
         {error && <div className="message error" role="alert">{error}</div>}
         {sessionMessage && <div className="message error session-message" role="alert">{sessionMessage}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
         {loginWait && <div id="login-wait" className="login-wait" role="status" aria-live="polite" aria-atomic="true"><p>{loginWait.seconds > 0 ? `Try again in ${loginWait.seconds} ${loginWait.seconds === 1 ? 'second' : 'seconds'}.` : loginWait.missingDelay ? 'The server did not provide a usable retry time. Wait before trying again.' : 'The countdown has ended. You can try signing in again.'}</p><p>{loginWait.missingDelay ? 'The server decides when sign-in is allowed.' : 'This countdown is a local reminder. The server decides when sign-in is allowed.'}</p></div>}
         {loading ? <p role="status">Opening a session...</p> : sessionCheckError || !session ? <div><p>The current session could not be confirmed.</p><button className="button primary" disabled={busy} onClick={() => void synchronizeSession()}>Check current session</button></div> : <form onSubmit={event => void signIn(event)}>
-          <label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} maxLength={254} required disabled={busy} />
-          <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={busy} />
-          <button className="button primary full-width" type="submit" disabled={busy || loginBlocked} aria-describedby={loginWait ? 'login-wait' : undefined}>{busy ? 'Signing in...' : 'Sign in'}</button>
+          <label htmlFor="email">Email address</label><input id="email" name="email" type="email" autoComplete={publicDemo ? 'off' : 'username'} value={publicDemo?.email ?? email} readOnly={!!publicDemo} onChange={event => setEmail(event.target.value)} maxLength={254} required disabled={busy} />
+          <label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete={publicDemo ? 'off' : 'current-password'} value={publicDemo?.password ?? password} readOnly={!!publicDemo} onChange={event => setPassword(event.target.value)} maxLength={256} required disabled={busy} />
+          <button className="button primary full-width" type="submit" disabled={busy || loginBlocked} aria-describedby={loginWait ? 'login-wait' : undefined}>{busy ? 'Signing in...' : publicDemo ? 'Enter synthetic demo' : 'Sign in'}</button>
         </form>}
-        <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Operators: alex@northline.example, jules@harbor.example</span><span>Reviewers: casey@northline.example, taylor@harbor.example</span><p>Each organization sees its own records.</p></div>
+        {publicDemo ? <div className="demo-accounts"><strong>Public reviewer access</strong><p>This account sees one synthetic organization. It cannot create, assign, resolve or replay saved business changes. The downloadable local application retains the operator workflow.</p></div> : session && <div className="demo-accounts"><strong>Synthetic accounts</strong><span>Operators: alex@northline.example, jules@harbor.example</span><span>Reviewers: casey@northline.example, taylor@harbor.example</span><p>Each organization sees its own records.</p></div>}
       </section>
     </main> : <main className={`workspace ${selectedId || creating ? 'has-selection' : ''}`}>
       <section className="workspace-heading"><div><p className="eyebrow">Operations queue</p><h1>Shipment exceptions</h1><p className="muted">Clear ownership, current status, and the history behind each change.</p></div><div className="workspace-controls"><button className="button secondary" disabled={busy || !!pending} onClick={() => void refreshCurrent()}>Refresh workspace</button>{canMutate && <button className="button primary" disabled={busy || !!pending || creating} onClick={startCreate}>New exception</button>}</div></section>
-      {!canMutate && <section className="access-notice" aria-label="Read-only access"><h2>Read-only access</h2><p>You can browse your organization's exceptions and change history. Creating, assigning and resolving exceptions requires an operator.</p></section>}
+      {!canMutate && <section className="access-notice" aria-label="Read-only access"><h2>Read-only access</h2><p>{publicDemo ? 'Browse fictional records and their history. This deployment denies business changes on the server. Do not enter real data.' : "You can browse your organization's exceptions and change history. Creating, assigning and resolving exceptions requires an operator."}</p></section>}
       <div className="workspace-messages">
         {sessionMessage && <div className="message error session-message" role="alert">{sessionMessage}</div>}
         {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy || !canMutate}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
@@ -827,7 +829,7 @@ function App() {
         </section>
       </div>
     </main>}
-    <footer className="app-footer"><span>Shipment Exception Workspace</span><span>Synthetic data / Local demonstration</span><a href="/third-party-notices" target="_blank" rel="noreferrer">Dependency notices</a></footer>
+    <footer className="app-footer"><span>Shipment Exception Workspace</span><span>{publicDemo ? 'Synthetic data / Read-only public demo' : 'Synthetic data / Local demonstration'}</span><a href="/third-party-notices" target="_blank" rel="noreferrer">Dependency notices</a></footer>
   </>;
 }
 

@@ -20,8 +20,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from .config import Settings
-from .db import PASSWORDS, connect, exception_record, require_current_schema
+from . import __version__
+from .db import PASSWORDS, connect, exception_record, require_current_schema, require_demo_identity
 from .login_admission import reserve_login
+from .public_demo import (ANONYMOUS_SECONDS, AUTHENTICATED_SECONDS, DEMO_EMAIL,
+                          PublicBoundary, RequestBudget, SESSION_LOCK, public_reviewer, session_slot)
 from .queue_browsing import InvalidQueueQuery, page_for
 from .history_browsing import InvalidHistoryQuery, page_for as history_page_for
 
@@ -131,14 +134,22 @@ class BodyLimit:
 
 
 def create_app(settings: Settings):
-    require_current_schema(settings.database_url)
+    if settings.public_demo:
+        require_demo_identity(settings.database_url, settings.demo_password)
+    else:
+        require_current_schema(settings.database_url)
     @asynccontextmanager
     async def lifespan(app):
         anyio.to_thread.current_default_thread_limiter().total_tokens = 2
         yield
 
     app = FastAPI(title="Shipment Exception Workspace", docs_url=None, redoc_url=None,
-                  openapi_url=None, lifespan=lifespan)
+                  openapi_url=None, lifespan=lifespan, redirect_slashes=not settings.public_demo)
+    if settings.public_demo:
+        from urllib.parse import urlsplit
+        budget = RequestBudget()
+        app.state.demo_request_budget = budget
+        app.add_middleware(PublicBoundary, authority=urlsplit(settings.origin).netloc, budget=budget)
     app.add_middleware(BodyLimit)
     # One dummy hash prevents the unknown-email path from skipping password work.
     dummy_hash = PASSWORDS.hash(secrets.token_urlsafe(32))
@@ -165,10 +176,13 @@ def create_app(settings: Settings):
         if not token or len(token) > 128:
             return None
         digest = hashlib.sha256(token.encode()).hexdigest()
-        return conn.execute("""SELECT s.*, u.organization_id, u.name, u.email, u.role, o.name AS organization_name
+        current = conn.execute("""SELECT s.*, u.organization_id, u.name, u.email, u.role, o.name AS organization_name
             FROM sessions s LEFT JOIN users u ON u.id=s.user_id
             LEFT JOIN organizations o ON o.id=u.organization_id
             WHERE token_hash=%s AND expires_at > now()""", (digest,)).fetchone()
+        if settings.public_demo and current and current["user_id"] and not public_reviewer(current):
+            return None
+        return current
 
     def check_context(request, current):
         supplied = request.headers.getlist("x-workspace-context")
@@ -197,31 +211,56 @@ def create_app(settings: Settings):
     def payload(current):
         result = {"authenticated": bool(current["user_id"]), "csrf_token": current["csrf_token"],
                   "session_context": session_context(current)}
+        if settings.public_demo:
+            result["demo"] = {"read_only": True, "email": DEMO_EMAIL, "password": settings.demo_password}
         if current["user_id"]:
             result["user"] = {"id": current["user_id"], **{key: current[key] for key in ("name", "email", "organization_id", "organization_name", "role")}}
         return jsonable_encoder(result)
 
     def new_session(conn, user_id=None):
+        if settings.public_demo:
+            now = session_slot(conn)
+            if now is None:
+                raise Problem(429, "demo_sessions_full", "The synthetic demo has no free session slots. Wait before trying again.",
+                              headers={"Retry-After": "60"})
+            expiry = now + timedelta(seconds=AUTHENTICATED_SECONDS if user_id else ANONYMOUS_SECONDS)
+        else:
+            expiry = datetime.now(timezone.utc) + timedelta(hours=8) if user_id else datetime.now(timezone.utc) + timedelta(minutes=15)
         token = secrets.token_urlsafe(32)
         row = {"token_hash": hashlib.sha256(token.encode()).hexdigest(), "user_id": user_id,
                "csrf_token": secrets.token_urlsafe(32),
-               "expires_at": datetime.now(timezone.utc) + timedelta(hours=8) if user_id else datetime.now(timezone.utc) + timedelta(minutes=15)}
+               "expires_at": expiry}
         conn.execute("INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES (%s,%s,%s,%s)", tuple(row.values()))
         return token, row
 
     def session_response(current, token=None):
         response = JSONResponse(payload(current))
         if token:
+            max_age = ((AUTHENTICATED_SECONDS if current["user_id"] else ANONYMOUS_SECONDS)
+                       if settings.public_demo else (28800 if current["user_id"] else 900))
             response.set_cookie(COOKIE, token, httponly=True, secure=settings.secure_cookie,
-                                samesite="strict", path="/", max_age=28800 if current["user_id"] else 900)
+                                samesite="strict", path="/", max_age=max_age)
         return response
+
+    @app.get("/api/version")
+    def version():
+        return {"version": __version__, "revision": settings.deployment_revision, "public_demo": settings.public_demo}
+
+    @app.get("/api/ready")
+    def ready():
+        try:
+            require_current_schema(settings.database_url)
+        except Exception:
+            return JSONResponse({"ready": False}, 503)
+        return {"ready": True}
 
     @app.get("/api/session")
     def get_session(current=Depends(session), conn=Depends(connection)):
         if current:
             return session_response(current)
         with conn.transaction():
-            conn.execute("DELETE FROM sessions WHERE expires_at <= now()")
+            if not settings.public_demo:
+                conn.execute("DELETE FROM sessions WHERE expires_at <= now()")
             token, created = new_session(conn)
         return session_response(created, token)
 
@@ -236,13 +275,18 @@ def create_app(settings: Settings):
                           headers={"Retry-After": str(retry_after)})
         user = conn.execute("SELECT u.*,o.name AS organization_name FROM users u JOIN organizations o ON o.id=u.organization_id WHERE email=%s",
                             (identifier,)).fetchone()
+        allowed = bool(user and (not settings.public_demo or public_reviewer(user)))
         try:
-            PASSWORDS.verify(user["password_hash"] if user else dummy_hash, body.password)
+            PASSWORDS.verify(user["password_hash"] if allowed else dummy_hash, body.password)
         except VerificationError:
             raise Problem(401, "invalid_credentials", "Email or password is incorrect.")
-        if not user:
+        if not allowed:
             raise Problem(401, "invalid_credentials", "Email or password is incorrect.")
         with conn.transaction():
+            if settings.public_demo:
+                # Take the common admission lock before deleting a session row,
+                # so cleanup and rotation cannot acquire these locks in reverse.
+                conn.execute("SELECT pg_advisory_xact_lock(%s,%s)", SESSION_LOCK)
             conn.execute("DELETE FROM sessions WHERE token_hash=%s", (current["token_hash"],))
             token, created = new_session(conn, user["id"])
         created.update({key: user[key] for key in ("name", "email", "organization_id", "organization_name", "role")})
@@ -308,6 +352,8 @@ def create_app(settings: Settings):
         return receipt
 
     def require_operator(conn, org, actor):
+        if settings.public_demo:
+            raise Problem(403, "read_only", "The public synthetic demo permits reviewing business records only.")
         # SHARE conflicts with an ordinary non-key role UPDATE. Keep this lock
         # until the business transaction commits, before receipt/record locks.
         user = conn.execute("SELECT organization_id,role FROM users WHERE id=%s FOR SHARE", (actor,)).fetchone()
