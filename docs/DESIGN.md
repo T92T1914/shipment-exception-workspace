@@ -5,10 +5,10 @@ renders intake, the queue and detail view. FastAPI authenticates every protected
 request and applies organization boundaries. PostgreSQL stores the durable
 records and serializes changes to an individual exception.
 
-The built frontend ships inside the Python wheel. A single loopback server
-serves the UI and API from the same origin. The UI keeps no authentication token
-in localStorage or sessionStorage. The installed route needs no credentialed
-CORS configuration or separate frontend service.
+The built frontend ships inside the Python wheel. In ordinary local mode, a
+single loopback server serves the UI and API from the same origin. The UI keeps
+no authentication token in localStorage or sessionStorage. The installed route
+needs no credentialed CORS configuration or separate frontend service.
 
 ## Identity and organization boundaries
 
@@ -18,13 +18,24 @@ Passwords use Argon2id. Its parallelism is explicitly one, and the application's
 synchronous handler limiter permits two concurrent handlers.
 
 The cookie is opaque, HttpOnly and SameSite=Strict. PostgreSQL stores its SHA-256
-digest, rather than its bearer value. Anonymous sessions expire after 15 minutes.
-Authenticated sessions have an absolute eight-hour expiry. The server checks
-expiry on each request, and logout deletes the server session.
+digest, rather than its bearer value. In ordinary local mode, anonymous sessions
+expire after 15 minutes and authenticated sessions have an absolute eight-hour
+expiry. The server checks expiry on each request, and logout deletes the server
+session.
 
 The loopback HTTP route deliberately uses a cookie without the Secure flag.
 That is a local development constraint. HTTPS settings require Secure cookies,
 but a production HTTPS deployment has not been qualified.
+
+The separately configured public reviewer mode requires a canonical HTTPS origin
+and Secure cookies. Its anonymous sessions expire after five minutes and visitor
+sessions after 30 minutes. Only the separately provisioned visitor identity is
+admitted, and the server refuses business writes and saved-receipt replay before
+receipt access. A shared API budget and transactional live-session cap bound the
+declared admission work. Session and admission state still change. These are
+synthetic-demo controls, with no accepted public hosting or production-security
+claim. See the [deployment configuration](deployment.md) and
+[security limits](LIMITATIONS.md#security-and-operations).
 
 Every state-changing request requires the configured exact Origin and a
 synchronizer CSRF token from the current session. Requests must use JSON.
