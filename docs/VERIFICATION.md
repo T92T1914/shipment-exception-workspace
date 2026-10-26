@@ -12,12 +12,25 @@ The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh
 | Corrected installed HTTPS staging | All four sequential public reviewer journeys passed at candidate `ff0935c23e3aedd9cf6018bb4c73c5dd2228d2a8`. Direct API controls, process restart and controlled session expiry passed separately. |
 | Installed operator walkthrough | Actual creation, independent API assignment, stale-version refusal, controlled response interruption, explicit receipt replay, resolution and desktop/narrow reload passed on a different fresh synthetic database. |
 | Candidate package acceptance | A fresh external installed consumer passed at `aa565af`, using wheel SHA256 `4ec45d384b142e5c8880fe411fbca0b0cfc6c167806e32cb3ebcd0dc5123625a`. All 25 pure deployment-helper cases and the new narrow enlarged-login browser regression passed separately. |
-| v0.9.0 hosted CI and downloadable release | Pending final-revision delivery and public download readback. The completed v0.8.1 release remains separate. |
+| GitHub Actions | Branch and PR executions at `08b94a6` each passed 348 backend/helper cases, the installed restart consumer and 54 browser journeys. Links and scope are below. |
+| v0.9.0 distribution | The selected Windows-built wheel has SHA256 `4ec45d384b142e5c8880fe411fbca0b0cfc6c167806e32cb3ebcd0dc5123625a`. The [versioned Release](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.0) records actual publication availability, source archive and asset digests. The completed v0.8.1 release remains separate. |
 | Public HTTPS application hosting | Pending actual provider deployment, served-revision readback and public journeys. Local TLS staging is not a deployed application. |
 
 The local combination is Windows x64, CPython 3.13.3, PostgreSQL 18.1, React 19.3.1 and the existing pinned dependencies. Frontend checks use the qualified isolated Playwright/Chromium route with one browser worker. Build/test concurrency remains at two or fewer. These results do not qualify every compatible environment or a managed PostgreSQL service.
 
 ## Backend execution identity
+
+The [branch run](https://github.com/T92T1914/shipment-exception-workspace/actions/runs/40340420693)
+and [PR run](https://github.com/T92T1914/shipment-exception-workspace/actions/runs/40340427865)
+both executed source `08b94a6d45605499819507a6585fd98b0f1ba76f` on the declared
+Linux CI route. Each reported 348 passed backend/helper cases with the retained
+TestClient warning, a successful installed restart consumer and 54 passed browser
+journeys. The 348 includes 25 pure provider-helper cases, not provider trials.
+These runs built their own wheel/source archives. Their wheel bytes are separate
+from the selected Windows-built release wheel. No reproducible-build equivalence
+is claimed. These are GitHub-hosted CI results, not public application hosting or
+native Linux restoration. Later runs and their exact revisions remain available
+in [Actions](https://github.com/T92T1914/shipment-exception-workspace/actions).
 
 The 323-case run imported the ordinary installed package from an external environment and used a support-only external test directory. PostgreSQL fixtures were disposable. No retained accepted consumer database was initialized, reseeded or used as a fixture.
 
