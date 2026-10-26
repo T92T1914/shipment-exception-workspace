@@ -11,7 +11,7 @@ The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh
 | Backend suite | 323 cases passed, no skips, one existing TestClient warning. This was an installed-package run against new disposable PostgreSQL state, before the core source was committed. Its exact fingerprint is recorded below. |
 | Corrected installed HTTPS staging | All four sequential public reviewer journeys passed at candidate `ff0935c23e3aedd9cf6018bb4c73c5dd2228d2a8`. Direct API controls, process restart and controlled session expiry passed separately. |
 | Installed operator walkthrough | Actual creation, independent API assignment, stale-version refusal, controlled response interruption, explicit receipt replay, resolution and desktop/narrow reload passed on a different fresh synthetic database. |
-| Final revision applicability | Final source, payload comparisons and any later installed-consumer execution must be joined to their actual identities. The earlier results below are not fresh execution at a future head. |
+| Candidate package acceptance | A fresh external installed consumer passed at `aa565af`, using wheel SHA256 `4ec45d384b142e5c8880fe411fbca0b0cfc6c167806e32cb3ebcd0dc5123625a`. All 25 pure deployment-helper cases and the new narrow enlarged-login browser regression passed separately. |
 | v0.9.0 hosted CI and downloadable release | Pending final-revision delivery and public download readback. The completed v0.8.1 release remains separate. |
 | Public HTTPS application hosting | Pending actual provider deployment, served-revision readback and public journeys. Local TLS staging is not a deployed application. |
 
@@ -26,6 +26,18 @@ The executed source was uncommitted over the accepted v0.8.1 head. The repositor
 The suite includes the prior application contracts and 52 new public-demo cases. Parameter-only origin, transport and configuration cases are part of that total. They do not establish actual remote database connectivity. Relevant checks include separate visitor provisioning, refusal to repurpose existing stock state, transactional provisioning failure, current identity at startup, secure cookies, role and organization admission, actual matching saved-receipt denials, session allocation/expiry controls, concurrent slot admission, request-budget behavior and ordinary local defaults. Registration of a configuration value is distinct from connecting to an external service.
 
 The existing FastAPI/Starlette TestClient deprecation warning remains recorded. Dependencies were not upgraded to conceal it.
+
+The owner compared every Python and SQL package member from the initial installed
+wheel to the corrected staging wheel and source at `aa565af`. Those bytes agree
+exactly. This joins the earlier backend execution to unchanged runtime code,
+without presenting it as a rerun. Frontend changes have their own actual staging
+journeys. The later fresh environment used only the selected ordinary wheel,
+with dependency consistency and installed-path checks, against another new
+disposable database. Its ordinary consumer passed process restart, persistent
+session/receipt, one business effect after retry, reviewer denial, queue/history
+and session-context checks. The 25 helper cases use fake downloads and connections
+and do not qualify the provider. The browser regression exercised the ordinary
+installed login at 390 pixels and exactly twice its root text size.
 
 ## Corrected installed staging
 

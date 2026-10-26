@@ -154,7 +154,7 @@ meaning of an interrupted request.
 
 The output cap does not bound database scanning, sorting or elapsed time. The
 existing database statement timeout is a separate resource guard, not proof of
-availability under load. Queue routes have no new rate limiter or index, and
+availability under load. Ordinary local queue routes have no new rate limiter or index, and
 this release makes no denial-of-service resistance or query-performance claim.
 
 ## History queries and positions
@@ -181,7 +181,8 @@ browse until refresh. It does not freeze user names, provide a full database
 snapshot or protect events from a privileged database operator. Pages retain
 ascending order within the latest or older selected window. No total is
 calculated. Bounded output does not establish a query-cost, latency, rate or
-load guarantee, and history requests have no new rate limiter.
+load guarantee. Ordinary local history requests have no new rate limiter. Public
+queue and history requests share the public API budget described below.
 
 The UI renders one bounded event page, retaining the first page and current
 page plus positions for visited pages. It does not persist them to browser
