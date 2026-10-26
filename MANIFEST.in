@@ -5,5 +5,8 @@ recursive-include frontend/src *.ts *.tsx *.css
 recursive-include frontend/e2e *.ts
 recursive-include tools *.py
 include tools/restored_browser.cjs
+include tools/public_demo_browser.cjs
+recursive-include deploy *.py
+include deploy/environment.example
 recursive-include tests *.py *.sql
 recursive-include docs *.md *.png

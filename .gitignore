@@ -11,3 +11,5 @@ frontend/playwright-report/
 src/shipment_workspace/static/
 .env
 *.log
+.shipment-runtime/
+.shipment-release-inputs/

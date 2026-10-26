@@ -100,6 +100,25 @@ async function screenshot(page: Page, name: string) {
   await page.screenshot({ path: join(directory, name), fullPage: true, animations: 'disabled' });
 }
 
+test('narrow login keeps enlarged text and keyboard controls within the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const assertBrowser = observeBrowser(page);
+  await page.goto('/');
+  await expect(page.getByLabel('Email address')).toBeVisible();
+  const ordinarySize = await page.locator('html').evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+  await page.evaluate(size => {
+    document.documentElement.style.fontSize = `${size}px`;
+  }, ordinarySize * 2);
+  await expect(page.locator('html')).toHaveCSS('font-size', `${ordinarySize * 2}px`);
+  await assertNoHorizontalOverflow(page);
+  await page.getByLabel('Email address').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeFocused();
+  assertBrowser();
+});
+
 test('desktop assignment, resolution, reload and organization switch use persisted records', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const assertBrowser = observeBrowser(page);

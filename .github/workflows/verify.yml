@@ -85,6 +85,7 @@ jobs:
           name: installed-workflow-wheel
           path: |
             dist/*.whl
+            dist/*.tar.gz
             frontend/test-results/results.json
           retention-days: 14
           if-no-files-found: error

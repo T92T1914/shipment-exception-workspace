@@ -11,10 +11,28 @@ an authorized retry of the same change returns the saved result without creating
 a second exception or event. The exception, audit event and saved response share one
 database transaction.
 
-This is a local engineering demonstration with synthetic data. It has no carrier
+This is an engineering demonstration with synthetic data. It has no carrier
 integration or operational users. [Executed verification](docs/VERIFICATION.md)
 records the tested revision and results. [Design](docs/DESIGN.md) explains the
 authorization and transaction boundaries.
+
+Start with the [download and local installation guide](docs/install.md) or the
+[v0.9.0 operator walkthrough](docs/operator-walkthrough.md). The walkthrough shows
+actual creation, conflicting edits, an interrupted response, receipt replay and
+resolution in the installed application.
+
+Version 0.9.0 also adds a separate public reviewer mode. Its
+[deployment guide](docs/deployment.md) describes the explicit HTTPS, database and
+provisioning requirements. Local HTTPS staging has passed. A public provider URL
+and provider restart acceptance are still pending, so these captures are not a
+claim of a running hosted service. Public visitors can inspect synthetic records
+and history. Business writes and mutation-receipt replay are denied by the server.
+
+The [public-mode desktop](docs/assets/v0.9.0/public-desktop-light.png) and
+[narrow dark](docs/assets/v0.9.0/public-narrow-dark.png) captures show installed
+v0.9.0 staging on October 26, 2026, at candidate `ff0935c`. Their saved history
+is labeled provisioned synthetic fixture data. The separate operator walkthrough
+records actual API actions and recovery.
 
 [Read in another language](https://github.com/T92T1914/T92T1914/blob/main/TRANSLATION.md).
 
@@ -226,8 +244,9 @@ the exercised wait state with synthetic credentials.
 
 This bounds one kind of local password-verification work. One caller can spend
 the global budget and temporarily block other users' new sign-ins. Fixed windows
-also allow bursts across a boundary. Other routes, including anonymous-session
-creation, are not rate-limited by this policy. See the
+also allow bursts across a boundary. Ordinary local mode has no general API or
+anonymous-session limiter. Public mode adds the separate API/session controls in
+the [deployment guide](docs/deployment.md). See the
 [design](docs/DESIGN.md#durable-login-admission) and
 [limits](docs/LIMITATIONS.md) before treating it as broader abuse protection.
 
@@ -244,7 +263,7 @@ The helper creates its own loopback cluster and two new databases. It does not
 start or alter an installed PostgreSQL service.
 
 ```powershell
-$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v081'
+$state = Join-Path $env:LOCALAPPDATA 'shipment-exception-workspace-local-v090'
 py -3.13 -m venv (Join-Path $state 'build-env')
 $buildPython = Join-Path $state 'build-env\Scripts\python.exe'
 & $buildPython -m pip install -r requirements-lock.txt
@@ -257,7 +276,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.8.1-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.0-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -309,7 +328,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.8.1-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.9.0-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -324,7 +343,7 @@ origin as the API, so the installed application needs no Vite development server
 
 ## Use an existing database
 
-Version 0.8.1 continues to use schema version 4. An existing schema 1, 2 or 3 database
+Version 0.9.0 continues to use schema version 4. An existing schema 1, 2 or 3 database
 needs the explicit migration below. Stop every application process using the
 dedicated database before changing its installed environment, and make a private
 backup with your PostgreSQL backup tooling before migration. Keep
@@ -334,21 +353,21 @@ general backup-restoration or downgrade procedure. The separate
 [local backup and restore guide](docs/backup-and-restore.md) defines a bounded
 PostgreSQL 18.1, same-owner, same-cluster route qualified with v0.8.0 and its
 tagged tools. It uses a distinct empty target and never initializes or seeds
-over restored state. This v0.8.1 client correction does not claim a newly
+over restored state. This v0.9.0 deployment extension does not claim a newly
 executed native restore combination.
 
-Build the v0.8.1 wheel as above, then install it into a new environment. Here,
+Build the v0.9.0 wheel as above, then install it into a new environment. Here,
 `$state` names the existing private state directory, not the fresh-start example.
 Load `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v081'
+$upgradeEnv = Join-Path $state 'consumer-env-v090'
 if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.8.1-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.0-py3-none-any.whl
 ```
 
 For schema 1, 2 or 3, run the explicit migration before serving. An existing
@@ -463,7 +482,8 @@ it is not a load test or performance measurement.
 
 ## Boundaries and licenses
 
-This version supports one small local workflow. It has no registration,
+This version supports one small synthetic workflow and a separate read-only
+public-demo mode. It has no registration,
 password recovery, role administration, reopen action or production
 deployment route. The audit history is an application record, not a tamper-proof
 compliance log. [Limitations](docs/LIMITATIONS.md) and [security notes](SECURITY.md)

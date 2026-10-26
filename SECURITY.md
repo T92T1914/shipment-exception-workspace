@@ -1,9 +1,10 @@
 # Security
 
-Shipment Exception Workspace is a local application demonstration using synthetic
-records. Run it against a dedicated local PostgreSQL database and keep the CLI's
-loopback binding. Do not use real shipment, customer, defense or other sensitive
-data in this release.
+Shipment Exception Workspace demonstrates a synthetic workflow. Ordinary local
+use keeps the CLI's loopback binding and a dedicated PostgreSQL database. The
+separate public reviewer mode requires the explicit
+[deployment configuration](docs/deployment.md). Do not use real shipment,
+customer, defense or other sensitive data in either mode.
 
 The application enforces session authentication, organization-scoped object
 access, current operator permission for mutations, CSRF checks, version conflicts
@@ -18,13 +19,21 @@ References remain case-sensitive within their organization. These are bounded
 integrity rules, rather than a general duplicate-detection or abuse-prevention
 system.
 
-These controls have a specific tested scope. There is no production deployment
-route, multifactor authentication, password recovery or
+These controls have a specific tested scope. The public mode is a synthetic
+demonstration, with no production-security qualification, multifactor
+authentication, password recovery or
 tamper-proof audit log. See [limitations](docs/LIMITATIONS.md) and the
 [executed verification record](docs/VERIFICATION.md) before interpreting a
 security claim.
 
 ## Operator and reviewer boundaries
+
+Public mode admits only the separately provisioned visitor identity in Northline.
+Its public password does not unlock any of the six ordinary seed accounts.
+Every public-mode business transaction refuses writes and receipt replay before
+receipt access, independently of hidden UI controls or a subsequently changed
+role. Ordinary local operator permissions remain separate. Public history is
+explicitly provisioned synthetic fixture data, not operational activity.
 
 Operators and read-only reviewers can inspect their organization's queue,
 details, history and members and can sign out. Only operators can create,
@@ -185,6 +194,19 @@ same browse is not another server permission check or instant revocation.
 
 ## Login admission and availability
 
+Public mode adds a process-local API budget of five requests per second with a
+burst of 30, plus a serialized database admission cap of 128 live session rows.
+Anonymous sessions last five minutes and visitor sessions 30 minutes. Admission
+cleans expired rows and checks the cap inside the same transaction. Replacement
+login locks before deleting its old row. A refused transaction rolls back that
+replacement. The configured demo origin must be canonical HTTPS. Session cookies
+are Secure, HttpOnly and SameSite Strict. The configured Host is checked exactly,
+and forwarded headers do not supply authority. Readiness does not allocate a
+session. These controls bound the declared application work and live rows. They
+do not bound physical database storage, network traffic or denial-of-service
+exposure. Restart resets the process-local budget, not the durable login budget
+or database session cap. Use one application process and one provider instance.
+
 The server reserves a durable database slot before Argon2 verification, with
 20 reservations per normalized identifier and 40 globally in each counter's
 fixed 60-second window. Correct passwords count too. Success, a new anonymous
@@ -204,8 +226,8 @@ Its countdown is a hint, and server admission is checked again on submission.
 
 The global budget deliberately trades availability for bounded local password
 work. A caller can exhaust it and temporarily block all new sign-ins. Fixed
-windows allow boundary bursts, and neither anonymous-session creation nor other
-API routes are rate-limited. This does not solve flooding, distributed attacks,
+windows allow boundary bursts. Ordinary local mode has no anonymous-session or
+general API limiter. The public-mode controls above do not solve distributed attacks,
 credential stuffing or broader availability. The 80-identifier-row bound is a
 design derivation under the application's serialized writer and clock, not
 measured attack resistance. This local policy is not authentication certification
@@ -264,7 +286,7 @@ when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.8.1 retains schema version 4. For schema 1, 2 or 3, stop every
+Version 0.9.0 retains schema version 4. For schema 1, 2 or 3, stop every
 application process using the dedicated database and take a private backup before
 running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.
@@ -280,7 +302,9 @@ Preserved sessions still obey their original expiry and logout behavior. A
 receipt replay still needs a current authenticated session, current operator
 permission, correct Origin and CSRF token. Migration does not add the two fresh-demo reviewer
 accounts to an existing database, and seeding is not an upgrade step. There is
-no downgrade or qualified backup-restoration route. See the
+no downgrade route. The separate v0.8.0 Windows/PostgreSQL 18.1
+[restore guide](docs/backup-and-restore.md) remains the bounded native
+qualification, with no managed-service restore claim. See the
 [existing-database instructions](README.md#use-an-existing-database) and check
 the executed evidence before interpreting preservation as a broader recovery
 guarantee. Upgrade acceptance uses disposable legacy fixtures and does not require

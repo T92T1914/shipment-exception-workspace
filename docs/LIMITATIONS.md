@@ -1,6 +1,6 @@
 # Limitations
 
-This release is a synthetic local workflow with a bounded acceptance record.
+This release is a synthetic workflow with a bounded acceptance record.
 It demonstrates application integration and concrete failure handling. It does
 not establish production operation, regulatory compliance, offensive security
 practice or suitability for sensitive logistics data.
@@ -8,7 +8,9 @@ practice or suitability for sensitive logistics data.
 ## Product scope
 
 - Two organizations and six accounts are seeded explicitly: four operators and
-  two read-only reviewers. There is no signup,
+  two read-only reviewers in ordinary local mode. Public mode adds one separate
+  Northline visitor reviewer and denies business writes even if that account's
+  role is changed. There is no signup,
   invitation flow, account administration, password recovery or password change UI.
 - Both roles can inspect their organization's queue, details, history and
   members. Only operators can create, assign, unassign, resolve or replay a
@@ -88,18 +90,25 @@ practice or suitability for sensitive logistics data.
 
 ## Security and operations
 
-- The CLI serves loopback HTTP only. Transport security, reverse proxies,
-  externally reachable hosting and secure production cookie configuration have
-  not been accepted as a deployment route.
+- Ordinary `serve` binds loopback HTTP. Explicit `serve-demo` supports a separately
+  provisioned public reviewer, canonical HTTPS origin, exact Host admission,
+  Secure/HttpOnly/SameSite Strict cookies and no forwarded-header trust. Local
+  HTTPS staging passed. Actual provider TLS and restart qualification remain
+  pending in the [deployment guide](deployment.md). These are synthetic demo
+  controls, without production-security acceptance.
 - Login admission permits 20 password verifications per normalized identifier
   and 40 globally in each counter's fixed 60-second window. It counts correct
   passwords too and does not reset on success. It is not a failed-attempt-only
   lockout, sliding-window limiter or complete abuse-prevention system.
 - A caller can exhaust the global budget and temporarily deny all new logins.
   Fixed windows allow bursts around expiry, and counter expiries need not align.
-  Other routes, including anonymous-session creation, have no admission limiter.
-  Anonymous-session flooding, distributed attacks and production availability
-  remain unsolved. There is no MFA, device management or session-management UI.
+  Ordinary local mode has no general API or anonymous-session limiter. Public
+  mode adds a process-local five-request-per-second budget with burst 30 and a
+  transactional cap of 128 live sessions, with five-minute anonymous and
+  30-minute visitor expiry. Readiness allocates no session. These do not bound
+  physical database storage, traffic or distributed denial of service. Restart
+  resets the process-local budget. There is no MFA, device management or
+  session-management UI, and production availability remains unqualified.
 - Identifier digests are SHA-256 of the trimmed, lowercased submitted email. A
   digest does not anonymize a guessable identifier. Known and unknown addresses
   share the admission policy, but broad timing-side-channel resistance has not
@@ -118,7 +127,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.8.0 retains schema 4. The explicit transactional upgrade from schema
+- Version 0.9.0 retains schema 4. The explicit transactional upgrade from schema
   1, 2 or 3 preserves existing users as operators and gives future omitted roles
   a reviewer default. Stop application processes and privately back up the
   dedicated database before that upgrade. There is

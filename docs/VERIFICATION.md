@@ -1,128 +1,71 @@
-# Explicit refresh coordination verification
+# v0.9.0 release and reviewer-deployment verification
 
-Version 0.8.1 corrects a client race: an explicit Refresh workspace action now
-joins the existing authoritative session-check owner, including a queued
-lifecycle check, before reloading current records. A matching background check
-can no longer discard the requested refresh through a competing generation.
-Failed checking hides the unconfirmed workspace and offers manual recovery.
-The server's current authorization remains authoritative.
+Version 0.9.0 adds a separately configured synthetic reviewer deployment while preserving the ordinary local operator application. The public route requires an explicit HTTPS origin, a separately provisioned visitor identity and matching startup configuration. It denies business writes at the server. The built frontend and API still share one origin.
 
-The [v0.8.0 verification](VERIFICATION-v0.8.0.md) retains the completed native
-backup/restore outcome and its adverse history. Earlier versioned records also
-remain intact. This patch does not repeat or extend native restore qualification.
+The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh correction and its original evidence. The [v0.8.0 verification](VERIFICATION-v0.8.0.md) preserves the native backup/restore campaign and adverse results. Neither is relabeled as a new v0.9.0 execution.
 
-## Baseline witness
+## Current evidence and pending delivery
 
-The baseline was the ordinary installed v0.8.0 wheel in a fresh environment and
-new task-owned PostgreSQL database. An actual API creation produced version 1.
-An independent actual assignment advanced the server to version 2 with two
-history events, while the existing page still displayed version 1.
-
-The regression held the explicit refresh's actual session response, dispatched
-a focus event to invoke the installed lifecycle listener, and controlled both
-response deliveries. The strengthened witness awaited the second response's
-finished body, checked two matching operator results, observed the refresh
-button available again and counted no business POST. The original document
-still displayed version 1. The regression failed at the expected version-2
-assertion. This was an executed installed-client fault, not a claimed server
-write failure or organization bypass.
-
-A first command matched no tests because its grep was anchored before the
-composed file/title prefix. That exit 1 ran no journey and supplied no baseline
-proof. The corrected first witness and stronger delivered-response witness ran
-against separate fresh state and remain retained with their actual failures.
-
-## Candidate and local execution
-
-The combination was Windows x64, CPython 3.13.3, PostgreSQL 18.1, Node 24.16.0,
-React 19.3.1 and the unchanged dependency locks. Isolated browser checks used
-Playwright 1.64.1 and the already qualified Chromium headless shell. Limits were
-two build/test threads, one heavy campaign and one browser worker. SHARED_PC
-remained active without screen capture, real-browser attachment, clipboard,
-audio, visible fallback or GPU execution.
-
-The narrow runtime change awaits synchronizeSession(), then checks mounting,
-active user, captured epoch/context and current authenticated session facts.
-It does not reinstall the earlier refresh response. The existing shared owner
-still retires changed sessions and actual uncertain operator intents, while a
-same-actor reviewer with no pending intent can keep readable selected detail.
-
-| Local check | Actual result |
+| Layer | Observed result |
 | --- | --- |
-| Build and ordinary installation | Initial and final v0.8.1 wheels were installed in separate fresh environments outside the checkout and imported from site-packages. Both installed restart/workflow consumers passed on distinct new databases. |
-| Package identity | All 16 installed package payload members matched their actual wheel. Final installed metadata also matched its wheel and the corrected README. Source archive checks include changed client/test bytes, guide/restore tools, security notes and migration fixtures. |
-| Full installed browser campaign | All 53 journeys passed at the executed source below, with zero skipped, unexpected or flaky results. These comprise the original 47 and six new controls. Later packaging applicability is checked by exact runtime payload identity. |
-| Final package consumer | Two fresh affected desktop/narrow journeys passed through the final installed wheel, with zero skipped, unexpected or flaky results. This is separate from the earlier full 53-journey execution. |
-| Backend applicability | Server code, backend tests, SQL and pins are unchanged apart from package-version metadata. The earlier 271-case execution is labeled reused local evidence, not a new local suite run. |
-| Preservation | Three accepted v0.8.0 artifact digests, 42 selected accepted metadata/credential files and all other worktree identities/status remained equal under the declared checks. No whole-database-tree byte comparison is claimed for this patch. |
-| Owned resources | Both fresh baseline apps and the candidate app were stopped with exact ownership checks. Only the new cluster was stopped, with retained data/environments/logs and no listeners on its recorded owned ports. |
+| Backend suite | 323 cases passed, no skips, one existing TestClient warning. This was an installed-package run against new disposable PostgreSQL state, before the core source was committed. Its exact fingerprint is recorded below. |
+| Corrected installed HTTPS staging | All four sequential public reviewer journeys passed at candidate `ff0935c23e3aedd9cf6018bb4c73c5dd2228d2a8`. Direct API controls, process restart and controlled session expiry passed separately. |
+| Installed operator walkthrough | Actual creation, independent API assignment, stale-version refusal, controlled response interruption, explicit receipt replay, resolution and desktop/narrow reload passed on a different fresh synthetic database. |
+| Final revision applicability | Final source, payload comparisons and any later installed-consumer execution must be joined to their actual identities. The earlier results below are not fresh execution at a future head. |
+| v0.9.0 hosted CI and downloadable release | Pending final-revision delivery and public download readback. The completed v0.8.1 release remains separate. |
+| Public HTTPS application hosting | Pending actual provider deployment, served-revision readback and public journeys. Local TLS staging is not a deployed application. |
 
-The execution source was
-[3818e3c6f69533f531e371f0fef35cc09d9e5928](https://github.com/T92T1914/shipment-exception-workspace/commit/3818e3c6f69533f531e371f0fef35cc09d9e5928).
-The five-entry report sampled fingerprint
-479eb93428c57a633b53322b955584592f7a5441cce5dc65ce162bcda5e3c917
-before/after each check. Browser-reported duration was 96.795 seconds.
-The initial installed runtime wheel SHA256 is
-a07c28558aca20df5208cbe1ba4c4a016fea2a85b45ea2a8ad5dc71a02ca4e30.
-Later evidence prose and branch naming are separate from that execution.
+The local combination is Windows x64, CPython 3.13.3, PostgreSQL 18.1, React 19.3.1 and the existing pinned dependencies. Frontend checks use the qualified isolated Playwright/Chromium route with one browser worker. Build/test concurrency remains at two or fewer. These results do not qualify every compatible environment or a managed PostgreSQL service.
 
-Packaging review corrected the README's versioned installation directories from
-v080 to unused v081 names, keeping existing installations separate. The final
-wheel includes that corrected README metadata and has SHA256
-856b509a822b3aecfeb49e0f1c0d146544fe6f3437a741d4bb715c7d2a0bc353.
-All 16 application payload members are byte-identical to the initial wheel.
-Its fresh installed restart consumer and two affected desktop/narrow journeys
-passed on another new database. The latter reported 5.123 seconds. This applies
-the earlier complete browser execution by identity, without inventing another
-local 53-journey run. Earlier package bytes and environments remain retained.
+## Backend execution identity
 
-## Six added controls
+The 323-case run imported the ordinary installed package from an external environment and used a support-only external test directory. PostgreSQL fixtures were disposable. No retained accepted consumer database was initialized, reseeded or used as a fixture.
 
-- Desktop keyboard activation and narrow activation both complete an explicit
-  refresh after a matching focus check. Complete delivered responses precede
-  the final record/history assertions. No business POST is sent by the refresh,
-  the original document remains and server data stays unchanged by reading.
-- The narrow fixture doubles the measured root text size through CSSOM, verifies
-  its computed value and checks horizontal fit. It is synthetic text resizing,
-  not physical-device or browser-zoom acceptance.
-- An actual read_only 403 response is held while a lifecycle check starts. Its
-  cleanup joins the active check after retiring the actual pending intent.
-  Selected readable detail survives, no extra POST is sent, and a later explicit
-  refresh reads current state. A finalization lock is not treated as an uncertain
-  intent by itself.
-- A trailing actual session read learns the same actor's reviewer role. The
-  latest access is used without reinstalling the earlier operator response.
-- A declared fixture replaces the trailing normally successful session response
-  with HTTP 503. The unconfirmed private view clears, no success is invented and
-  keyboard activation of Check current session recovers reading without a POST.
-- A real shared-cookie account change retires a held refresh. Its old response
-  cannot read the retired detail or enter the next organization's workspace.
+The executed source was uncommitted over the accepted v0.8.1 head. The repository runner recorded stable content fingerprint `2451e76a9b017c61563c2c8a1aa56f94e51d0b41850728d9b1b2e9cefc90962e` before and after the command. The backend core was subsequently frozen at [`a0317171e44c2b97f2e50db89895400e4581aba7`](https://github.com/T92T1914/shipment-exception-workspace/commit/a0317171e44c2b97f2e50db89895400e4581aba7). This is not a claim that the suite was rerun at that commit. Later source and final-package applicability require their own identity comparison or execution.
 
-Non-author review first found an unreachable proposed test ordering: it tried
-to click Refresh while sessionChecking disabled it. That test was corrected to
-the actual denial-cleanup caller before positive execution. Review also required
-computed text-size proof instead of assuming inline style insertion worked under
-CSP. These were source/test-design findings, not executed application failures.
-Product controls and CSP were not weakened to satisfy the tests.
+The suite includes the prior application contracts and 52 new public-demo cases. Parameter-only origin, transport and configuration cases are part of that total. They do not establish actual remote database connectivity. Relevant checks include separate visitor provisioning, refusal to repurpose existing stock state, transactional provisioning failure, current identity at startup, secure cookies, role and organization admission, actual matching saved-receipt denials, session allocation/expiry controls, concurrent slot admission, request-budget behavior and ordinary local defaults. Registration of a configuration value is distinct from connecting to an external service.
 
-## Delivery and limits
+The existing FastAPI/Starlette TestClient deprecation warning remains recorded. Dependencies were not upgraded to conceal it.
 
-The normal Linux branch, PR and merged-main workflow independently builds and
-checks its actual source/wheel, runs the complete backend suite and exercises the
-ordinary installed consumer and full browser suite. Delivery records and PR
-receipts distinguish those fresh hosted executions from local reuse and baseline
-failures. The exposed Code Review diagnostics are separate from the labeled
-independent agent source/evidence review and required human approval.
+## Corrected installed staging
 
-There is no new dependency, schema, server-policy, background polling or business
-retry behavior. Session checking is not a general message rate limiter, and
-progress under an endless notification stream is not promised. A failed check
-requires explicit recovery. Retired browser intent cannot undo a committed
-transaction. Dispatched lifecycle events do not establish actual mobile
-suspension, BFCache restoration or instantaneous access notification.
+The completed staging candidate was source [`ff0935c23e3aedd9cf6018bb4c73c5dd2228d2a8`](https://github.com/T92T1914/shipment-exception-workspace/commit/ff0935c23e3aedd9cf6018bb4c73c5dd2228d2a8), installed wheel SHA256 `23c6f969600794ec8e89cbf3258d5219b4e19dfe1ae81ecd7036615837c2bcb5`. Installed runtime members matched the selected wheel and candidate source. The frontend was the actual build carried in that wheel.
 
-The native restore helper retains its qualified v0.8.0 version admission and
-[guide](backup-and-restore.md). No v0.8.1 native dump/restore, cross-version,
-failover, disaster-recovery or production-security claim is added. Private raw
-reports and new captures stay outside Git. Source/tag/artifact publication is
-separate from application hosting. Ragged Pool remains in maintenance unchanged.
+This route used direct loopback HTTPS with a task-owned self-signed certificate and an exception limited to its isolated clients. No system certificate trust was changed. It does not qualify an external TLS-terminating proxy, provider hostname, managed database or public network.
+
+The actual visitor credential authenticated only the dedicated reviewer. It failed against all six stock accounts. Valid direct create, repeated-key create, assign, unassign and resolve attempts received `read_only` denials without a replay response. Foreign and guessed record references remained unavailable. Wrong Origin and CSRF values were refused. Invalid Host was rejected without allocating a cookie, and supplied forwarded host/protocol headers granted no authority.
+
+The session cookie carried Secure, HttpOnly and SameSite=Strict with the configured expiry. The application process was restarted, then the current session read records again. A controlled database timestamp change expired that specific session and required recovery. This is a fixture-driven expiry boundary, not an elapsed-time longevity result. Complete business-row and event-sequence comparisons remained unchanged across the public checks. Sessions and login-admission rows can still change, so the database is not described as immutable.
+
+Four browser journeys ran serially:
+
+| Journey | Viewport | Appearance and root text |
+| --- | --- | --- |
+| Desktop | 1440 by 1000 | Light, 100 percent |
+| Desktop enlarged | 1440 by 1000 | Dark, 200 percent |
+| Narrow enlarged | 390 by 844 | Light, 200 percent |
+| Narrow | 390 by 844 | Dark, 100 percent |
+
+Each used the real reviewer entry, server search/filter results, selected record/history, authenticated hash reload, browser-back navigation and explicit sign-out. Keyboard entry, search, record selection and sign-out had observed focus and a visible outline. Enlarged cases checked the actual computed root text size, rather than assuming the requested style took effect. Checked panels fit their viewports. All four sent zero UI business POSTs and recorded no unexpected browser/network errors.
+
+Provisioned public history supplies the read-only browsing examples. It is synthetic setup, separate from the [operator walkthrough](operator-walkthrough.md). That walkthrough performs real application writes and ends at version 4 with four events. Its uncertain assignment makes two identical key/body attempts, receives the actual server's replay marker and adds only one assignment event. Its screenshot identity and limits remain attached to the executed candidate.
+
+## Adverse results retained
+
+The first 52-case public backend run returned 51 passes and one failed new assertion. The API lists each history page oldest first, while that assertion expected reverse order. The assertion was corrected without changing history semantics. The original source and failed run remain retained.
+
+An initial full-suite launcher imposed importlib isolation on existing fixture/support imports and failed collection for ten modules. It executed no backend tests. The corrected external support-only route and independent installed import probe produced the 323-case result above. Collection failure is not counted as an application test pass or failure.
+
+Staging attempt a1 passed two desktop journeys but failed the narrow light 200-percent login layout. Measured content extended to 478 pixels at a 390-pixel viewport. The intro-flow flex row did not wrap. The source correction adds wrapping without hiding overflow or reducing text size. The overall attempt remained failed, and its downstream operator journey was not executed.
+
+Attempt a2 passed direct API/restart/controlled-expiry checks and both desktop journeys, but the same narrow entry still failed. A separate diagnostic measured 451 pixels of document content. An unbroken login headline overflowed its own box even though element bounds fitted the viewport. The correction permits word wrapping in that headline. The overall a2 attempt remained failed and its operator journey remained unexecuted. The final installed attempt passed all four journeys and the operator workflow. Earlier targets, wheels, captures, diagnostics and logs remain distinct and preserved privately.
+
+## Scope and limits
+
+Current role, organization, session expiry, Origin and CSRF checks remain authoritative. A local client cannot undo a committed write by retiring its intent. Ordinary operator recovery preserves the difference between version conflicts and an uncertain committed request. No session or access recovery performs an automatic business POST.
+
+Public configuration, request/session limits and negative fixtures do not establish resistance to distributed abuse, production security, sensitive-data suitability, failover or operational capacity. Local restart proves the observed application-process restart, not host replacement, storage recovery or database disaster recovery. Text resizing, appearance and viewport emulation do not prove physical-device, BFCache or every accessibility setting.
+
+The native restore qualification remains the v0.8.0 Windows/PostgreSQL 18.1 trusted-archive, direct-loopback, same-cluster route. There is no new native dump/restore run, managed-service restore, native Linux restore, cross-version restoration or production-backup claim here.
+
+SHARED_PC remained active. Verification used files, APIs and isolated headless pages without foreground capture/control, real-browser profile attachment, clipboard, audio or a GPU campaign. Private connection records, credentials, database state, raw logs and unreviewed captures remain outside public Git. Public source, downloadable assets, installed acceptance, local TLS staging and actual hosting are separate delivery layers.
