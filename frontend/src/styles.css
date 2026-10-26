@@ -60,9 +60,9 @@ form > label:not(:first-child) { margin-top: 1.1rem; }
 .identity span { font-size: .73rem; color: #a7c1c7; }
 .login-layout { max-width: 1100px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 7rem; align-items: center; margin: 0 auto; min-height: calc(100vh - 202px); padding: 4.5rem 2rem; }
 .login-intro .eyebrow { color: var(--teal); margin-bottom: 1.1rem; }
-.login-intro h1 { font-size: clamp(2.2rem, 3.7vw, 3rem); line-height: 1.12; margin-bottom: 1.4rem; }
+.login-intro h1 { font-size: clamp(2.2rem, 3.7vw, 3rem); line-height: 1.12; margin-bottom: 1.4rem; overflow-wrap: anywhere; }
 .login-intro > p:not(.eyebrow):not(.small-print) { line-height: 1.75; color: #526c74; max-width: 440px; font-size: 1rem; }
-.intro-flow { display: flex; gap: 1rem; color: #194d4c; font-size: .84rem; font-weight: 650; border-top: 1px solid #cbdcdb; margin-top: 2rem; padding-top: 1.4rem; }
+.intro-flow { display: flex; flex-wrap: wrap; gap: 1rem; color: #194d4c; font-size: .84rem; font-weight: 650; border-top: 1px solid #cbdcdb; margin-top: 2rem; padding-top: 1.4rem; }
 .intro-flow span[aria-hidden] { color: #a1b7b6; }
 .login-intro .small-print { max-width: 350px; color: #6a8087; margin-top: 1.5rem; }
 .login-card { border: 1px solid #d2dfe0; border-radius: 10px; background: #fff; padding: 2rem; box-shadow: 0 12px 38px #153c3d08; }
@@ -243,4 +243,43 @@ form > label:not(:first-child) { margin-top: 1.1rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; color: #e2eaed; background: #101c24; --muted: #acc1ca; --line: #3b515a; }
+  h1, h2, h3, label { color: #e2eaed; }
+  a, .app-footer a { color: #92d5c3; }
+  input, select, textarea, .filter-label select { color: #e2eaed; background: #0f2028; border-color: #637b87; }
+  textarea::placeholder { color: #abc1ca; }
+  input:disabled, select:disabled, textarea:disabled { color: #a8bbc2; background: #22323a; }
+  .button.secondary { color: #bce7de; background: #1b303a; border-color: #68838b; }
+  .button.secondary:hover:not(:disabled) { background: #29424b; border-color: #92d5c3; }
+  .demo-banner { background: #14362f; color: #bae6d8; }
+  .login-card, .queue-panel, .detail-panel { background: #172832; border-color: var(--line); }
+  .login-intro .eyebrow, .workspace-heading .eyebrow, .intake > .eyebrow { color: #92d5c3; }
+  .login-intro > p:not(.eyebrow):not(.small-print), .login-intro .small-print,
+  .login-card > .eyebrow, .demo-accounts, .demo-accounts p, .panel-heading p,
+  .filter-label, .queue-query, .queue-pages > span, .queue-live-note, .row-bottom,
+  .priority-normal, .record-meta, .detail-description h3, .action-card .eyebrow,
+  .character-count, .history-heading > span, .history-list .history-note,
+  .history-list .history-meta, .history-pages > span, .history-boundary,
+  .empty-detail p, .panel-empty, .app-footer { color: #acc1ca; }
+  .demo-accounts strong { color: #e2eaed; }
+  .intro-flow { color: #bce7de; border-color: var(--line); }
+  .login-wait, .queue-selection-note, .access-notice { background: #173b35; color: #c4e8df; border-color: #4e8277; }
+  .login-wait p + p { color: #b8d6ce; }
+  .message.error, .history-error { color: #ffd1c2; background: #3d241f; border-color: #b57763; }
+  .history-error p, .queue-error { color: #ffd1c2; }
+  .message.success { color: #b4e5c9; background: #163a2b; border-color: #4d8b71; }
+  .count-marker, .reference { color: #b4c9d0; }
+  .exception-list li + li, .record-meta, .app-footer { border-color: var(--line); }
+  .exception-row { color: #dce7eb; background: #172832; }
+  .exception-row:hover:not(:disabled) { background: #24404a; }
+  .exception-row.selected { background: #213d40; border-left-color: #82cfbd; }
+  .priority-high { color: #e9b286; }
+  .status-open { color: #f4d08b; border-color: #8c713d; background: #3b2f14; }
+  .status-resolved { color: #b6e5c5; border-color: #3f865b; background: #163c2b; }
+  .action-card { background: #1b303a; border-color: var(--line); }
+  .history-dot { background: #9dd8c7; box-shadow: 0 0 0 4px #1e4037; }
+  .empty-icon { color: #bce7de; background: #213d40; }
 }
