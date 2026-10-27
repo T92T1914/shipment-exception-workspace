@@ -6,6 +6,10 @@ recursive-include frontend/e2e *.ts
 recursive-include tools *.py
 include tools/restored_browser.cjs
 include tools/public_demo_browser.cjs
+include tools/requirements-presentation.txt
+include docs/workflow-explainer.json docs/workflow-rendering.json
+include docs/assets/workflow-obscur-wide.svg docs/assets/workflow-obscur-narrow.svg
+recursive-include site *.html *.css *.js
 recursive-include deploy *.py
 include deploy/environment.example
 recursive-include tests *.py *.sql

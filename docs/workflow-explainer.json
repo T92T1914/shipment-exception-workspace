@@ -1,0 +1,28 @@
+{
+  "kind": "conceptual workflow, not a new application execution",
+  "source_revision": "67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c",
+  "source_paths": ["docs/DESIGN.md", "docs/operator-walkthrough.md"],
+  "theme_source": {
+    "repository": "T92T1914/clair-obscur-themes",
+    "revision": "7a57fe750ff50205a17e1d342106a0d3f2777159",
+    "file": "tokens.json"
+  },
+  "obscur": {
+    "canvas": "#090909", "panel": "#151515", "text": "#f4f4f4",
+    "muted": "#bcbcbc", "border": "#858585", "accent": "#b3c8d8"
+  },
+  "title": "One change. A durable history.",
+  "subtitle": "A synthetic exception moves through an authorized operator workflow.",
+  "steps": [
+    {"title": "1. Intake", "lines": ["Create a record at v1.", "Assign Sam at version 2.", "Keep both history events."]},
+    {"title": "2. Admit the change", "lines": ["Current operator access.", "Matching organization.", "Expected version 2."]},
+    {"title": "3. Commit together", "lines": ["Assign Casey at version 3.", "One new history event.", "Saved response receipt."]},
+    {"title": "4. An uncertain reply", "lines": ["Explicit same-intent retry.", "Original key and body.", "Authorized receipt replay."]}
+  ],
+  "result": "Resolution later reaches version 4 and four events. A matching retry adds none.",
+  "limits": [
+    "A stale version refuses the business change. Reviewers can read, not edit.",
+    "Recheck current access on retry. Refresh current state after the saved response.",
+    "No automatic business POST after session or access recovery."
+  ]
+}
