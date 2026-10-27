@@ -2,3 +2,9 @@
 tests/fixtures/schema_v1.sql -text
 tests/fixtures/schema_v2.sql -text
 tests/fixtures/schema_v3.sql -text
+
+# New conceptual inputs and SVGs retain exact receipt bytes on Windows checkouts.
+tools/render_workflow_explainer.py text eol=lf
+docs/workflow-explainer.json text eol=lf
+docs/workflow-rendering.json text eol=lf
+docs/assets/workflow-obscur-*.svg text eol=lf
