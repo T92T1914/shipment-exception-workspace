@@ -36,15 +36,22 @@ records actual API actions and recovery.
 
 [Read in another language](https://github.com/T92T1914/T92T1914/blob/main/TRANSLATION.md).
 
-<picture>
-  <source media="(max-width: 680px)" srcset="docs/assets/mobile-intake.png">
-  <img src="docs/assets/desktop-intake.png" alt="Manually created synthetic exception with creation, assignment and resolution history" width="1440">
-</picture>
+<p align="center">
+  <a href="docs/operator-walkthrough.md">
+    <img src="docs/assets/v0.9.0/operator-05-narrow-resolved.png" alt="Dark appearance of the installed v0.9.0 operator walkthrough: a resolved version-4 synthetic exception with creation, two assignments and resolution history" width="390">
+  </a>
+</p>
 
-These intake captures are from v0.2.0. The
-[narrow capture](docs/assets/mobile-intake.png) shows the same workflow at
-390 pixels wide. Later queue and login captures are linked below. The earlier
-v0.1.0 captures remain in `docs/assets` with their original bytes.
+This dark capture shows the installed v0.9.0 operator walkthrough at 390 pixels
+wide. The resolved version-4 record retains all four history events. The
+[walkthrough](docs/operator-walkthrough.md#capture-identity-and-limits) records
+the capture source, wheel identity and execution limits. It is a local
+demonstration, separate from the unfinished public hosting route.
+
+The earlier v0.2.0 [desktop intake](docs/assets/desktop-intake.png) and
+[narrow intake](docs/assets/mobile-intake.png) captures remain available. Later
+queue and login captures are linked below. The v0.1.0 captures also remain in
+`docs/assets` with their original bytes.
 
 ## The workflow
 
