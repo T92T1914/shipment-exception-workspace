@@ -36,7 +36,10 @@ records actual API actions and recovery.
 
 [Read in another language](https://github.com/T92T1914/T92T1914/blob/main/TRANSLATION.md).
 
-![Manually created synthetic exception with creation, assignment and resolution history](docs/assets/desktop-intake.png)
+<picture>
+  <source media="(max-width: 680px)" srcset="docs/assets/mobile-intake.png">
+  <img src="docs/assets/desktop-intake.png" alt="Manually created synthetic exception with creation, assignment and resolution history" width="1440">
+</picture>
 
 These intake captures are from v0.2.0. The
 [narrow capture](docs/assets/mobile-intake.png) shows the same workflow at
