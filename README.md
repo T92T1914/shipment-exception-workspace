@@ -21,12 +21,18 @@ Start with the [download and local installation guide](docs/install.md) or the
 actual creation, conflicting edits, an interrupted response, receipt replay and
 resolution in the installed application.
 
-Version 0.9.0 also adds a separate public reviewer mode. Its
-[deployment guide](docs/deployment.md) describes the explicit HTTPS, database and
-provisioning requirements. Local HTTPS staging has passed. A public provider URL
-and provider restart acceptance are still pending, so these captures are not a
-claim of a running hosted service. Public visitors can inspect synthetic records
-and history. Business writes and mutation-receipt replay are denied by the server.
+[Open the hosted synthetic demo](https://shipment-employer-demo.onrender.com/)
+and choose **Enter synthetic demo**. It supplies its separate public reviewer
+credential. Browse the Northline queue, search references, inspect details and
+history, then sign out. Do not enter real shipment or personal data.
+
+The v0.9.0 hosted route passed actual HTTPS, reviewer-denial, desktop/narrow and
+provider-restart checks on October 27, 2026. The
+[hosted acceptance record](docs/hosted-demo.md) separates those results from
+local staging and the operator walkthrough. Business writes and receipt replay
+are denied by the server. The [deployment guide](docs/deployment.md) records the
+explicit database/setup route, including Render's successful-deployment
+prerequisite for one-off jobs.
 
 The [public-mode desktop](docs/assets/v0.9.0/public-desktop-light.png) and
 [narrow dark](docs/assets/v0.9.0/public-narrow-dark.png) captures show installed
@@ -64,7 +70,8 @@ This dark capture shows the installed v0.9.0 operator walkthrough at 390 pixels
 wide. The resolved version-4 record retains all four history events. The
 [walkthrough](docs/operator-walkthrough.md#capture-identity-and-limits) records
 the capture source, wheel identity and execution limits. It is a local
-demonstration, separate from the unfinished public hosting route.
+demonstration, separate from the hosted reviewer's provisioned fixtures and
+[hosted checks](docs/hosted-demo.md).
 
 The earlier v0.2.0 [desktop intake](docs/assets/desktop-intake.png) and
 [narrow intake](docs/assets/mobile-intake.png) captures remain available. Later

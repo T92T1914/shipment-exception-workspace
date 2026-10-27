@@ -93,9 +93,12 @@ practice or suitability for sensitive logistics data.
 - Ordinary `serve` binds loopback HTTP. Explicit `serve-demo` supports a separately
   provisioned public reviewer, canonical HTTPS origin, exact Host admission,
   Secure/HttpOnly/SameSite Strict cookies and no forwarded-header trust. Local
-  HTTPS staging passed. Actual provider TLS and restart qualification remain
-  pending in the [deployment guide](deployment.md). These are synthetic demo
-  controls, without production-security acceptance.
+  HTTPS staging and the separate October 27 hosted route passed their declared
+  checks. The [hosted record](hosted-demo.md) preserves direct API refusals,
+  browser journeys, instance replacement and API-visible state comparison.
+  Doubled root text at 390px produces awkward heading wraps and a long page.
+  These are synthetic demo controls, without production-security or
+  comprehensive accessibility acceptance.
 - Login admission permits 20 password verifications per normalized identifier
   and 40 globally in each counter's fixed 60-second window. It counts correct
   passwords too and does not reset on success. It is not a failed-attempt-only
