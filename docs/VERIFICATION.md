@@ -4,7 +4,7 @@ Version 0.9.0 adds a separately configured synthetic reviewer deployment while p
 
 The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh correction and its original evidence. The [v0.8.0 verification](VERIFICATION-v0.8.0.md) preserves the native backup/restore campaign and adverse results. Neither is relabeled as a new v0.9.0 execution.
 
-## Current evidence and pending delivery
+## Current evidence and delivery
 
 | Layer | Observed result |
 | --- | --- |
@@ -14,9 +14,11 @@ The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh
 | Candidate package acceptance | A fresh external installed consumer passed at `aa565af`, using wheel SHA256 `4ec45d384b142e5c8880fe411fbca0b0cfc6c167806e32cb3ebcd0dc5123625a`. All 25 pure deployment-helper cases and the new narrow enlarged-login browser regression passed separately. |
 | GitHub Actions | Branch and PR executions at `08b94a6` each passed 348 backend/helper cases, the installed restart consumer and 54 browser journeys. Links and scope are below. |
 | v0.9.0 distribution | The selected Windows-built wheel has SHA256 `4ec45d384b142e5c8880fe411fbca0b0cfc6c167806e32cb3ebcd0dc5123625a`. The [versioned Release](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.0) records actual publication availability, source archive and asset digests. The completed v0.8.1 release remains separate. |
-| Public HTTPS application hosting | Pending actual provider deployment, served-revision readback and public journeys. Local TLS staging is not a deployed application. |
+| Public HTTPS application hosting | The separate October 27 [hosted acceptance](hosted-demo.md) joins the selected release wheel, actual Render checkout/build receipts, HTTPS identity, direct reviewer refusals, four browser journeys and instance-restart/session/business readback. Initial deployment and consumer-observer failures remain separate adverse results. |
 
-The local combination is Windows x64, CPython 3.13.3, PostgreSQL 18.1, React 19.3.1 and the existing pinned dependencies. Frontend checks use the qualified isolated Playwright/Chromium route with one browser worker. Build/test concurrency remains at two or fewer. These results do not qualify every compatible environment or a managed PostgreSQL service.
+The local combination is Windows x64, CPython 3.13.3, PostgreSQL 18.1, React 19.3.1 and the existing pinned dependencies. Frontend checks use the qualified isolated Playwright/Chromium route with one browser worker. Build/test concurrency remains at two or fewer. Those local/CI results do not qualify every compatible environment. The separately
+recorded [hosted route](hosted-demo.md) qualifies one managed PostgreSQL 18 demo
+configuration; it does not extend the native backup/restore campaign.
 
 ## Backend execution identity
 

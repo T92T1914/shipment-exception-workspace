@@ -29,7 +29,7 @@
   <p class="eyebrow">Static project explainer</p>
   <h1>Change a shipment record without losing its history.</h1>
   <p class="lead">Shipment Exception Workspace is a small React, Python and PostgreSQL application for creating, finding, assigning and resolving synthetic exceptions. Its useful question is what happens when two edits compete or a committed response disappears.</p>
-  <p>This page explains the project. It does not run the application or provide a public database. The installable application and its operator walkthrough are available below. Separate public application hosting remains unfinished.</p>
+  <p>This static page explains the project. The separate <a href="https://shipment-employer-demo.onrender.com/">hosted synthetic demo</a> lets visitors browse records and history as a read-only reviewer. Choose <strong>Enter synthetic demo</strong>; do not enter real shipment or personal data. The installable application and operator walkthrough remain available below.</p>
   <section id="workflow" aria-labelledby="workflow-title">
     <h2 id="workflow-title">One change. A durable history.</h2>
     <figure>
@@ -63,6 +63,8 @@
     <h2 id="run-title">Inspect the code or install the application.</h2>
     <p>The v0.9.0 wheel contains the Python application and built frontend. The supported local route uses a separate PostgreSQL database. Installation, initialization and synthetic fixtures are explicit local operations, not actions performed by this webpage.</p>
     <div class="links">
+      <a href="https://shipment-employer-demo.onrender.com/">Open read-only demo</a>
+      <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/main/docs/hosted-demo.md">Hosted acceptance and limits</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.0">Download v0.9.0</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/install.md">Installation guide</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/tree/618aa4f18394064004318ea3619ae2412d609c8c">Accepted runtime source</a>
@@ -72,7 +74,7 @@
   <section id="limits" class="panel" aria-labelledby="limits-title">
     <h2 id="limits-title">What the result establishes.</h2>
     <p>The project demonstrates organization-scoped access, operator/reviewer roles, version conflicts, atomic history and receipts, and explicit recovery through an installed synthetic consumer. Tests and captures have their own recorded source and environment identities.</p>
-    <p>It has no carrier integration, operational users or production deployment. The separate public reviewer mode denies business writes and receipt replay on the server; local HTTPS staging has passed, but a public provider URL and provider restart acceptance remain unfinished. GitHub Pages hosts this explanation, not FastAPI or PostgreSQL.</p>
+    <p>It has no carrier integration, operational users or production qualification. The separate hosted reviewer passed bounded HTTPS, server-denial, desktop/narrow and instance-restart checks on October 27, 2026. Its history is provisioned synthetic fixture data. At 390 pixels with doubled root text, content reflows but headings can wrap awkwardly and the page becomes long. These checks are not comprehensive accessibility or security acceptance. GitHub Pages hosts this explanation; Render hosts the separate application and database.</p>
     <p>The earlier Windows/PostgreSQL 18.1 <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/b2ff568e49ef037a7a585f0ee39be79a11d81f6f/docs/backup-and-restore.md">trusted local backup/restore result</a> keeps its v0.8.0 basis. It is not production disaster-recovery qualification.</p>
   </section>
 </main>
