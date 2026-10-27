@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" data-appearance="obscur">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="A synthetic shipment workflow with versioned edits, transactional history and explicit recovery from uncertain responses.">
+  <title>Shipment Exception Workspace | Project explainer</title>
+  <script src="appearance.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to the project</a>
+<header>
+  <nav aria-label="Project navigation">
+    <a href="https://github.com/T92T1914">Portfolio</a>
+    <a href="https://github.com/T92T1914/shipment-exception-workspace">Repository and README</a>
+    <a href="#example">Worked example</a>
+    <a href="#run">Run locally</a>
+    <a href="#limits">Limits</a>
+  </nav>
+  <fieldset class="appearance-controls" hidden><legend>Appearance</legend>
+    <button type="button" data-appearance-choice="obscur" aria-pressed="true">Obscur</button>
+    <button type="button" data-appearance-choice="clair" aria-pressed="false">Clair</button>
+    <button type="button" data-appearance-choice="auto" aria-pressed="false">Auto</button>
+  </fieldset>
+</header>
+<main id="main">
+  <p class="eyebrow">Static project explainer</p>
+  <h1>Change a shipment record without losing its history.</h1>
+  <p class="lead">Shipment Exception Workspace is a small React, Python and PostgreSQL application for creating, finding, assigning and resolving synthetic exceptions. Its useful question is what happens when two edits compete or a committed response disappears.</p>
+  <p>This page explains the project. It does not run the application or provide a public database. The installable application and its operator walkthrough are available below. Separate public application hosting remains unfinished.</p>
+  <section id="workflow" aria-labelledby="workflow-title">
+    <h2 id="workflow-title">One change. A durable history.</h2>
+    <figure>
+      <a href="workflow-obscur-wide.svg">
+        <picture>
+          <source media="(max-width:700px)" srcset="workflow-obscur-narrow.png">
+          <img src="workflow-obscur-wide.png" width="1800" height="840" alt="Synthetic intake creates version 1 and Sam assignment reaches version 2. Casey assignment commits version 3, one history event and a saved receipt together. A matching authorized retry adds no event. Resolution later reaches version 4.">
+        </picture>
+      </a>
+      <figcaption>Conceptual workflow based on the <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/DESIGN.md">implemented transaction and access design</a> and the installed walkthrough. It is not a new application run or a performance measurement. <a href="workflow-obscur-narrow.svg">Open the narrow SVG</a> or <a href="workflow-rendering.json">inspect the source/font/output record</a>.</figcaption>
+    </figure>
+    <p>The server checks the current session, organization and operator role. A successful change updates the record, inserts its history event and saves its response receipt in one transaction. The expected version prevents an older edit from overwriting a newer one. A reviewer can inspect records but cannot make business changes.</p>
+  </section>
+  <section id="example" class="panel" aria-labelledby="example-title">
+    <h2 id="example-title">A response can be lost after the change commits.</h2>
+    <ol>
+      <li>Create a synthetic receiving-appointment exception at version 1.</li>
+      <li>Assign Sam, reaching version 2. A competing edit that still expects version 1 is refused.</li>
+      <li>Assign Casey with the current version. The server commits version 3, but the test deliberately interrupts its response.</li>
+      <li>Explicitly retry the retained same intent with its original key and body. Current access still has to be valid. The saved response returns without another assignment event.</li>
+      <li>Resolve the record, reaching version 4. Its four events remain visible after reload.</li>
+    </ol>
+    <p>A receipt response is historical. A separate current-state refresh reads any later changes. Session or access recovery does not automatically POST a business change, and retiring an uncertain client request cannot undo a commit.</p>
+    <p><a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/operator-walkthrough.md">Inspect the executed operator walkthrough and capture identity</a>.</p>
+    <figure class="capture">
+      <a href="operator-05-narrow-resolved.png"><img src="operator-05-narrow-resolved.png" width="390" height="1792" loading="lazy" alt="Genuine dark capture of the installed v0.9.0 operator walkthrough, showing the resolved version-4 synthetic record and four history events."></a>
+      <figcaption>Original accepted dark capture from the ordinary installed v0.9.0 candidate, preserved without recoloring. Its <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/operator-walkthrough.md#capture-identity-and-limits">source, wheel and execution limits</a> remain separate from later source revisions and public hosting.</figcaption>
+    </figure>
+  </section>
+  <section id="run" aria-labelledby="run-title">
+    <h2 id="run-title">Inspect the code or install the application.</h2>
+    <p>The v0.9.0 wheel contains the Python application and built frontend. The supported local route uses a separate PostgreSQL database. Installation, initialization and synthetic fixtures are explicit local operations, not actions performed by this webpage.</p>
+    <div class="links">
+      <a href="https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.0">Download v0.9.0</a>
+      <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/install.md">Installation guide</a>
+      <a href="https://github.com/T92T1914/shipment-exception-workspace/tree/618aa4f18394064004318ea3619ae2412d609c8c">Accepted runtime source</a>
+      <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/VERIFICATION.md">Executed verification</a>
+    </div>
+  </section>
+  <section id="limits" class="panel" aria-labelledby="limits-title">
+    <h2 id="limits-title">What the result establishes.</h2>
+    <p>The project demonstrates organization-scoped access, operator/reviewer roles, version conflicts, atomic history and receipts, and explicit recovery through an installed synthetic consumer. Tests and captures have their own recorded source and environment identities.</p>
+    <p>It has no carrier integration, operational users or production deployment. The separate public reviewer mode denies business writes and receipt replay on the server; local HTTPS staging has passed, but a public provider URL and provider restart acceptance remain unfinished. GitHub Pages hosts this explanation, not FastAPI or PostgreSQL.</p>
+    <p>The earlier Windows/PostgreSQL 18.1 <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/b2ff568e49ef037a7a585f0ee39be79a11d81f6f/docs/backup-and-restore.md">trusted local backup/restore result</a> keeps its v0.8.0 basis. It is not production disaster-recovery qualification.</p>
+  </section>
+</main>
+<footer>
+  <p><a href="https://github.com/T92T1914">Return to the portfolio</a> · <a href="build-info.json">Published source and asset identity</a></p>
+  <p>Obscur is the first-visit and no-JavaScript baseline. A saved explicit appearance takes priority. Text uses local Inter when available and a system sans-serif fallback otherwise; no font binary is downloaded by this page. The infographic's recorded Inter glyphs are part of its generated exports.</p>
+</footer>
+</body>
+</html>

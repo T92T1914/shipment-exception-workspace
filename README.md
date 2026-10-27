@@ -36,6 +36,24 @@ records actual API actions and recovery.
 
 [Read in another language](https://github.com/T92T1914/T92T1914/blob/main/TRANSLATION.md).
 
+<a href="https://t92t1914.github.io/shipment-exception-workspace/">
+  <picture>
+    <source media="(max-width: 700px)" srcset="docs/assets/workflow-obscur-narrow.png">
+    <img src="docs/assets/workflow-obscur-wide.png" alt="Synthetic intake creates version 1. After Sam assignment, current access and expected version 2 admit Casey assignment. Version 3, history and receipt commit together. A matching retry adds no event; later resolution reaches version 4." width="1800">
+  </picture>
+</a>
+
+This conceptual example follows the [installed operator walkthrough](docs/operator-walkthrough.md):
+creation, two assignments and resolution leave a version-4 record with four
+history events. Current authorization and version checks guard a change. The
+record, new event and response receipt commit together. A still-authorized
+same-intent retry uses the original key and body, then refreshes current state.
+Session or access recovery does not automatically POST a business change.
+[Explore the static project page](https://t92t1914.github.io/shipment-exception-workspace/),
+[read the design](docs/DESIGN.md), or inspect the
+[diagram explanation and source](docs/workflow-explainer.md) and [rendering record](docs/workflow-rendering.json).
+The static page explains the project; it does not host the application.
+
 <p align="center">
   <a href="docs/operator-walkthrough.md">
     <img src="docs/assets/v0.9.0/operator-05-narrow-resolved.png" alt="Dark appearance of the installed v0.9.0 operator walkthrough: a resolved version-4 synthetic exception with creation, two assignments and resolution history" width="390">
