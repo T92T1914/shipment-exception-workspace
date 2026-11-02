@@ -5,6 +5,7 @@ recursive-include frontend/src *.ts *.tsx *.css
 recursive-include frontend/e2e *.ts
 recursive-include tools *.py
 include tools/capacity-protocol.json
+include docs/capacity-results.json
 include tools/restored_browser.cjs
 include tools/public_demo_browser.cjs
 include tools/requirements-presentation.txt

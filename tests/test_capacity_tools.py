@@ -11,7 +11,7 @@ import pytest
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 from capacity_model import digest, identity, plan, summarize, trial_summary, verify_reconciliation
-from qualify_capacity import local_url
+from qualify_capacity import local_url, require_clean_libpq_environment, Study
 
 
 @pytest.fixture
@@ -63,6 +63,26 @@ def test_warmup_does_not_improve_measurement(protocol):
 def test_remote_or_ambiguous_database_targets_rejected(url):
     with pytest.raises(ValueError):
         local_url(url)
+
+
+@pytest.mark.parametrize("name", ["PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE", "PGPASSFILE", "PGOPTIONS", "pghostaddr"])
+def test_ambient_libpq_defaults_refused_without_printing_values(name):
+    with pytest.raises(ValueError) as problem:
+        require_clean_libpq_environment({name: "private-value-must-not-be-logged"})
+    assert name in str(problem.value)
+    assert "private-value-must-not-be-logged" not in str(problem.value)
+
+
+def test_clean_libpq_environment_keeps_unrelated_options():
+    value = {"PATH": "synthetic", "SHIPMENT_CAPACITY_RESOURCE_ROOT": "synthetic"}
+    assert require_clean_libpq_environment(value) is None
+    assert value == {"PATH": "synthetic", "SHIPMENT_CAPACITY_RESOURCE_ROOT": "synthetic"}
+
+
+def test_environment_guard_precedes_resource_or_database_setup(monkeypatch):
+    monkeypatch.setenv("PGHOSTADDR", "private-value-must-not-be-logged")
+    with pytest.raises(ValueError, match="PGHOSTADDR"):
+        Study(None)
 
 
 @pytest.fixture

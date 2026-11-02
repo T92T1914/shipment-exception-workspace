@@ -16,6 +16,14 @@ integration or operational users. [Executed verification](docs/VERIFICATION.md)
 records the tested revision and results. [Design](docs/DESIGN.md) explains the
 authorization and transaction boundaries.
 
+The [local capacity and recovery study](docs/capacity-study.md) qualifies one
+declared synthetic Windows/PostgreSQL workload. All 5,400 measured requests
+completed correctly across 24 fresh-state replicates. The larger-fixture
+4-RPS runs had scheduled-arrival-to-completion p95 values of 65.8 to 67.2 ms.
+One controlled database stop/restart preserved the original intent, receipt,
+audit and final-state invariants. This is local evidence, separate from the
+hosted reviewer demo, with its workload and limits recorded alongside results.
+
 Start with the [download and local installation guide](docs/install.md) or the
 [v0.9.0 operator walkthrough](docs/operator-walkthrough.md). The walkthrough shows
 actual creation, conflicting edits, an interrupted response, receipt replay and

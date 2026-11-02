@@ -145,7 +145,7 @@ def main():
               "job_name": job_name,
               "affinity_mask": mask, "logical_cores": len(bits[:2]),
               "memory_limit_bytes": limits.job_memory, "disk_limit_bytes": 2 * 1024 ** 3,
-              "disk_poll_seconds": 1, "disk_enforcement": "sampled stop, not a filesystem quota",
+              "wait_seconds_between_scans": 1, "disk_enforcement": "sampled stop, not a filesystem quota",
               "disk_roots": [str(path) for path in disk_roots],
               "stop_path": str(root / "STOP"), "kill_on_supervisor_exit": True,
               "descendants_inherit_job": True, "started_epoch": time.time(), "status": "running"}

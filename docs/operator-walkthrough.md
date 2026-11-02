@@ -52,3 +52,26 @@ These captures came from the ordinary installed v0.9.0 candidate at source [`ff0
 This is execution at that candidate, not a fresh run at a later final head. Applying the captures to a later release requires a documented source or payload comparison. The [verification notes](VERIFICATION.md) carry the current delivery identity and separate local, installed, CI and hosted results.
 
 The interruption was deliberately introduced after a real server commit. It is not an observed public-host outage. Viewport and appearance emulation do not qualify physical devices, every accessibility setting, production operation or recovery from a failed database. All people, organizations and shipment records shown here are synthetic.
+
+## Follow the queue into SQL and recovery
+
+The [local capacity study](capacity-study.md) adds a separate inspection route.
+Start with its larger-fixture 4-RPS rows, then follow `GET /api/exceptions` in
+`app.py` through current session/organization admission into
+`queue_browsing.page_for`. The parameterized query applies organization scope,
+literal search and stable ordering before its lookahead limit. A 20-record
+response does not prove the database scanned only 20 records. The instrumented
+query plan and complete HTTP response clock measure different work.
+
+Inspect the recovery timeline next. Readiness failed while the owned database
+was stopped. A committed reply withheld by the harness remained an uncertain
+intent for its logical caller. After restart, retrying the original key/body
+returned the saved response without another mutation or audit event. This is
+a new local database-interruption result, separate from these October 26 UI
+captures and from the public hosted reviewer's read-only route.
+
+One small accounting example explains the checker: one correct response, one
+503 refusal, one transport failure and one generator drop mean 1/4 correct
+completion, not 100%. `test_refusals_transport_errors_and_drops_remain_in_denominator`
+keeps that distinction executable. The study explains what ran and how to
+inspect its measured limits.

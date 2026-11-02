@@ -25,6 +25,7 @@ def check(run):
                 assert [{k: row[k] for k in item} for row, item in zip(rows, expected)] == expected
                 for row in rows:
                     assert row["category"] in {"successful", "failed", "refused", "dropped"}
+                    assert row.get("error") not in {"AssertionError", "KeyError", "JSONDecodeError", "ValueError", "TypeError", "UnicodeDecodeError"}, "Incorrect response requires investigation, regardless of completion target"
                     if row["category"] == "successful":
                         assert row["status"] == 200 and row["validated"] is True
                     if row["category"] != "dropped":

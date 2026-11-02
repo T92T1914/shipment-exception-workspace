@@ -141,8 +141,12 @@ practice or suitability for sensitive logistics data.
   The v0.8.1 client correction is not a new native restore qualification. Cross-version
   restore, storage corruption, power loss, disaster recovery and high availability
   remain outside the accepted workflow.
-- Request bodies and field lengths are bounded, but the application has not been
-  load tested. Two concurrent synchronous handlers and one server worker keep
+- Request bodies and field lengths are bounded. The separate
+  [local capacity study](capacity-study.md) exercised one declared synthetic
+  Windows/PostgreSQL queue/history workload up to eight offered RPS, with one
+  controlled database stop/restart. It did not reach saturation or qualify the
+  hosted demo, arbitrary histories, denial-of-service resistance or production
+  capacity. Two concurrent synchronous handlers and one server worker keep
   the local resource footprint small. The derived 80-row bound for identifier
   admission state assumes the normal serialized application writer and database
   clock. It is not a measured protection against denial of service or privileged

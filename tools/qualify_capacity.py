@@ -56,8 +56,18 @@ def local_url(value):
     return parsed
 
 
+def require_clean_libpq_environment(environment):
+    names = sorted(name for name in environment if name.upper().startswith("PG"))
+    if names:
+        raise ValueError("Inherited PostgreSQL environment names are not admitted: " + repr(names))
+
+
 class Study:
     def __init__(self, args):
+        # A URL host does not override libpq's separate hostaddr/service
+        # defaults. Refuse those before any helper or administrative connection.
+        # Values remain private and the caller's environment is not modified.
+        require_clean_libpq_environment(os.environ)
         self.args = args
         self.root = args.output.resolve()
         control_root = Path(os.environ.get("SHIPMENT_CAPACITY_RESOURCE_ROOT", "")).resolve()
