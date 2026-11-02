@@ -205,3 +205,9 @@ establish all browser, accessibility or physical device behavior.
 The screenshots and seeded records contain synthetic examples. No real shipment
 data, business impact, employer endorsement, security certification or hiring
 outcome is claimed.
+
+Version 0.9.1's [dependency classification](dependency-outages.md) covers declared
+shutdown/connection failures and a bounded numeric-endpoint refusal diagnostic.
+It does not classify every database exception, DNS/failover route or timeout as
+temporary. A 503 neither proves rollback nor permits automatic replay. The
+accepted hosted v0.9.0 demo was not updated or fault-tested by this correction.

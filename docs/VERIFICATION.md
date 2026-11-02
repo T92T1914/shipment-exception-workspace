@@ -1,4 +1,61 @@
-# v0.9.0 release and reviewer-deployment verification
+# Application verification and retained release evidence
+
+## v0.9.1 dependency-outage recovery
+
+The [recovery guide](dependency-outages.md) explains the corrected response and
+explicit user actions. The change was developed over accepted PR19 merge
+`8cb3de10985287187aa743271bb7e43a28d13eff`. The earlier capacity measurements and
+hosted v0.9.0 acceptance below keep their original identities.
+
+The selected local v0.9.1 wheel has SHA256
+`aaf7da963b3237e318d1e376e12f8c58c9e934b7f43880b6037784ca98901df6`.
+It was built on Windows x64 with CPython 3.13.3 and the existing locked
+dependencies, installed into a new external environment and consumed outside
+the checkout. PostgreSQL was 18.1. Python/SQL package members were checked
+against source; compiled UI members were compared with the browser-tested wheel.
+The runtime correction changes no database schema, dependency pins or receipt
+format. The source archive includes its regression and recovery documentation.
+
+| Evidence | Executed result and boundary |
+| --- | --- |
+| Baseline caller | The older installed package returned the misleading generic 500 for a read and reviewer mutation when a documented shutdown exception was injected at the actual session query. Business rows, audit events and receipts stayed unchanged. This was a simulated driver fault, not a native stop. |
+| Initial regression suite | 413 backend/helper cases passed before the native timeout correction, with the retained TestClient warning. This is not relabeled as a full-suite run of the final candidate. |
+| Final focused backend | 49 cases passed on the corrected installed package. These include actual caller faults, rollback and deliberately withheld commit acknowledgement, receipt/role/expiry/organization checks, and parameter-only classification checks. They are not 49 native interruptions. |
+| Ordinary installed consumer | The final fresh wheel consumer passed startup, UI/API use, process restart, durable receipt retry, reviewer denial, queue/history and session-context checks. |
+| Affected browser journeys | Six headless journeys passed with one worker: read recovery, matching-session explicit receipt retry, and unavailable-session retirement, each at desktop and 390-pixel narrow widths. Narrow checks used twice the root text size. Keyboard controls, original key/body, no automatic business replay and viewport fit were checked. These used controlled browser responses on the earlier candidate; its UI bytes are unchanged in the selected wheel. |
+| Corrected native interruption | One fresh direct-loopback cluster and a fixture of three exceptions per organization passed the corrected stop/restart scenario. Session, queue and member reads returned sanitized 503; reviewer mutation returned 503 during the outage and 403 after recovery. The historical receipt replayed exactly. Changed-body and stale actions were refused, later valid work succeeded, and ordered full business/audit/receipt comparison passed. |
+
+The corrected native scenario produced two committed actions, two new events
+and three complete saved receipts, including the stale-action response. The
+acknowledgement loss was deliberate withholding of an actually committed
+response, not naturally occurring network loss. No retained database, hosted
+service or capacity workload matrix was exercised. Fresh resources were bounded
+by the existing Windows two-core Job Object, 3 GiB memory limit, sampled 2 GiB
+storage stop and finite scenario timeouts. These are containment limits, not
+performance measurements or storage quotas.
+
+Adverse results remain part of acceptance. The first browser launcher used an
+obsolete executable path and launched no browser. The next run passed three
+desktop cases but timed out on a test that omitted the normal narrow back
+navigation; its following two cases did not run. The corrected six-case run
+passed, then its separate cleanup command failed; Job Object termination and
+ownership readback are recorded separately from those browser passes. The first
+real native attempt did stop its database but returned 500 because Windows
+reported a SQLSTATE-less connection timeout. It did not pass recovery. The later
+corrected scenario above used new state and the selected wheel; it does not erase
+that first stopped-database failure.
+
+The fix requires corroborated refusal, including explicit numeric routing checks
+for that timeout path. It does not classify all timeouts, credential/TLS/schema
+errors or programming failures as unavailable. The one TCP diagnostic may add up
+to 2.5 seconds after the existing five-second connection attempt. There is no
+guessed recovery deadline, automatic transaction retry, failover qualification,
+new native restore result or production-availability claim. Source/CI artifact
+publication is separate from the unchanged downloadable v0.9.0 Release and
+accepted hosted demo. Exact-revision GitHub checks belong to this contribution's
+PR and subsequent main run, not the historical runs below.
+
+## v0.9.0 release and reviewer-deployment verification
 
 Version 0.9.0 adds a separately configured synthetic reviewer deployment while preserving the ordinary local operator application. The public route requires an explicit HTTPS origin, a separately provisioned visitor identity and matching startup configuration. It denies business writes at the server. The built frontend and API still share one origin.
 

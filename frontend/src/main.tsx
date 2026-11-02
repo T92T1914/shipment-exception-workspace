@@ -109,6 +109,10 @@ function sessionProblem(failure: unknown): failure is ApiError {
   return failure instanceof ApiError && (failure.status === 401 || failure.code === 'session_changed');
 }
 
+function dependencyUnavailable(failure: unknown): failure is ApiError {
+  return failure instanceof ApiError && failure.status === 503 && failure.code === 'dependency_unavailable';
+}
+
 function sameIdentity(left: Session, right: Session) {
   return left.authenticated === right.authenticated && left.user?.id === right.user?.id &&
     left.user?.organization_id === right.user?.organization_id;
@@ -279,7 +283,9 @@ function App() {
           setSessionCheckError(false);
         } catch (failure) {
           if (!mounted.current || failure instanceof StaleSessionResponse || !matchesSessionContext(snapshot)) continue;
-          retireWorkspace('The current session could not be confirmed. Check the session before continuing.');
+          retireWorkspace(dependencyUnavailable(failure)
+            ? 'The workspace is temporarily unavailable, so the current session could not be confirmed. Check the session before continuing.'
+            : 'The current session could not be confirmed. Check the session before continuing.');
           setSessionCheckError(true);
         }
       }
@@ -348,7 +354,9 @@ function App() {
     } catch (failure) {
       if (!current() || (failure instanceof DOMException && failure.name === 'AbortError')) return false;
       if (!(failure instanceof ApiError && failure.status === 401)) {
-        setQueueError('The queue could not be loaded. Change the search or return to the first page.');
+        setQueueError(dependencyUnavailable(failure)
+          ? 'The workspace is temporarily unavailable. Refresh the workspace to load the queue again.'
+          : 'The queue could not be loaded. Change the search or return to the first page.');
       }
       throw failure;
     } finally {
@@ -380,7 +388,9 @@ function App() {
     } catch (failure) {
       if (generation === detailRequest.current && user === activeUser.current && selectedFromHash() === id && matchesSessionContext(snapshot) &&
           !(failure instanceof DOMException && failure.name === 'AbortError')) {
-        setHistoryError('The latest history could not be loaded. Refresh the workspace to try again.');
+        setHistoryError(dependencyUnavailable(failure)
+          ? 'The workspace is temporarily unavailable. Refresh the workspace to load the latest history.'
+          : 'The latest history could not be loaded. Refresh the workspace to try again.');
       }
       throw failure;
     } finally {
@@ -617,7 +627,9 @@ function App() {
       if (sessionProblem(failure)) {
         await handleError(failure);
       } else {
-        setHistoryError('This history page could not be loaded. Retry the page or refresh the latest changes.');
+        setHistoryError(dependencyUnavailable(failure)
+          ? 'The workspace is temporarily unavailable. Retry this history page or refresh the latest changes when it is available.'
+          : 'This history page could not be loaded. Retry the page or refresh the latest changes.');
       }
     } finally {
       if (current()) { historyBusy.current = false; setHistoryLoading(false); }
@@ -688,7 +700,9 @@ function App() {
         pendingRef.current = null; setPending(null);
         setError('The change could not be prepared. Nothing was sent. Try again.');
       } else if (!committed && failure instanceof ApiError && (failure.status === 0 || failure.status >= 500)) {
-        setError('The response was interrupted. The change may already be saved. Retry the same change to retrieve its result.');
+        setError(dependencyUnavailable(failure)
+          ? 'The workspace is temporarily unavailable. This change may already be saved. Retry the same change to retrieve its result, or check your current session before continuing.'
+          : 'The response was interrupted. The change may already be saved. Retry the same change to retrieve its result.');
       } else {
         pendingRef.current = null; setPending(null);
         if (failure instanceof ApiError && failure.status === 403 && failure.code === 'read_only') {
@@ -780,7 +794,7 @@ function App() {
       {!canMutate && <section className="access-notice" aria-label="Read-only access"><h2>Read-only access</h2><p>{publicDemo ? 'Browse fictional records and their history. This deployment denies business changes on the server. Do not enter real data.' : "You can browse your organization's exceptions and change history. Creating, assigning and resolving exceptions requires an operator."}</p></section>}
       <div className="workspace-messages">
         {sessionMessage && <div className="message error session-message" role="alert">{sessionMessage}</div>}
-        {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy || !canMutate}>{busy ? 'Checking saved result...' : 'Retry same change'}</button>}</div>}
+        {error && <div className="message error" role="alert"><p>{error}</p>{conflict && <button className="button secondary" onClick={() => void refreshCurrent()} disabled={busy}>Refresh record</button>}{pending && <div className="workspace-controls"><button className="button secondary" onClick={() => void sendChange(pending)} disabled={busy || !canMutate}>{busy ? 'Checking saved result...' : 'Retry same change'}</button><button className="button secondary" onClick={() => void synchronizeSession()} disabled={busy}>Check current session</button></div>}</div>}
         {notice && <div className="message success" role="status">{notice}</div>}
       </div>
       <div className="work-columns">

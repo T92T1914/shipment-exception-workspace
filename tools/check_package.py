@@ -10,12 +10,13 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--dist", type=Path, default=root / "dist")
 distribution_directory = parser.parse_args().dist
-wheel = distribution_directory / "shipment_exception_workspace-0.9.0-py3-none-any.whl"
+wheel = distribution_directory / "shipment_exception_workspace-0.9.1-py3-none-any.whl"
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
     required = ("shipment_workspace/static/index.html", "shipment_workspace/schema.sql", "shipment_workspace/migrate_v1_v2.sql",
                 "shipment_workspace/migrate_v2_v3.sql", "shipment_workspace/migrate_v3_v4.sql", "shipment_workspace/login_admission.py", "shipment_workspace/queue_browsing.py", "shipment_workspace/history_browsing.py",
-                "shipment_workspace/THIRD_PARTY_NOTICES.txt", "shipment_workspace/app.py", "shipment_workspace/public_demo.py")
+                "shipment_workspace/THIRD_PARTY_NOTICES.txt", "shipment_workspace/app.py", "shipment_workspace/public_demo.py",
+                "shipment_workspace/availability.py")
     for name in required:
         assert name in names, f"Missing wheel member: {name}"
     assert any(name.startswith("shipment_workspace/static/assets/") and name.endswith(".js") for name in names)
@@ -27,9 +28,9 @@ with zipfile.ZipFile(wheel) as archive:
         assert "node_modules" not in name and not name.endswith((".env", ".log"))
         if name.startswith("shipment_workspace/") and name.endswith((".py", ".sql")):
             assert archive.read(name) == (root / "src" / name).read_bytes(), f"Stale wheel source: {name}"
-sdist = distribution_directory / "shipment_exception_workspace-0.9.0.tar.gz"
+sdist = distribution_directory / "shipment_exception_workspace-0.9.1.tar.gz"
 with tarfile.open(sdist) as archive:
-    security = archive.extractfile("shipment_exception_workspace-0.9.0/SECURITY.md")
+    security = archive.extractfile("shipment_exception_workspace-0.9.1/SECURITY.md")
     assert security.read() == (root / "SECURITY.md").read_bytes(), "Missing or stale sdist security notes"
     for name in ("docs/backup-and-restore.md", "tools/local_restore.py", "tools/installed_restore_consumer.py",
                  "tools/restored_browser.cjs", "tests/test_restore_guards.py",
@@ -37,18 +38,19 @@ with tarfile.open(sdist) as archive:
                  "tools/public_demo_browser.cjs", "deploy/render_build.py",
                  "deploy/render_initial_setup.py", "deploy/environment.example",
                  "docs/install.md", "docs/deployment.md", "docs/operator-walkthrough.md",
-                 "tests/test_public_demo.py", "tests/test_deploy_helpers.py"):
-        payload = archive.extractfile(f"shipment_exception_workspace-0.9.0/{name}")
+                 "tests/test_public_demo.py", "tests/test_deploy_helpers.py", "tests/test_dependency_outage.py",
+                 "frontend/e2e/outage-recovery.spec.ts", "docs/dependency-outages.md"):
+        payload = archive.extractfile(f"shipment_exception_workspace-0.9.1/{name}")
         assert payload.read() == (root / name).read_bytes(), f"Missing or stale source payload: {name}"
     for name in ("tools/capacity-protocol.json", "tools/capacity_windows.py", "tools/capacity_model.py",
                  "tools/qualify_capacity.py", "tools/check_capacity_run.py", "tests/test_capacity_tools.py",
                  "docs/capacity-study.md", "docs/capacity-results.json"):
-        payload = archive.extractfile(f"shipment_exception_workspace-0.9.0/{name}")
+        payload = archive.extractfile(f"shipment_exception_workspace-0.9.1/{name}")
         assert payload.read() == (root / name).read_bytes(), f"Missing or stale capacity source payload: {name}"
     for version in (1, 2, 3):
-        fixture = f"shipment_exception_workspace-0.9.0/tests/fixtures/schema_v{version}.sql"
+        fixture = f"shipment_exception_workspace-0.9.1/tests/fixtures/schema_v{version}.sql"
         assert archive.extractfile(fixture).read() == (root / f"tests/fixtures/schema_v{version}.sql").read_bytes()
     for path in sorted((root / "docs/assets/v0.9.0").glob("*.png")):
         relative = path.relative_to(root).as_posix()
-        assert archive.extractfile(f"shipment_exception_workspace-0.9.0/{relative}").read() == path.read_bytes()
+        assert archive.extractfile(f"shipment_exception_workspace-0.9.1/{relative}").read() == path.read_bytes()
 print(f"Wheel contents and sdist migration fixture accepted. SHA256 {hashlib.sha256(wheel.read_bytes()).hexdigest()}")
