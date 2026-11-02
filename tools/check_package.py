@@ -40,6 +40,11 @@ with tarfile.open(sdist) as archive:
                  "tests/test_public_demo.py", "tests/test_deploy_helpers.py"):
         payload = archive.extractfile(f"shipment_exception_workspace-0.9.0/{name}")
         assert payload.read() == (root / name).read_bytes(), f"Missing or stale source payload: {name}"
+    for name in ("tools/capacity-protocol.json", "tools/capacity_windows.py", "tools/capacity_model.py",
+                 "tools/qualify_capacity.py", "tools/check_capacity_run.py", "tests/test_capacity_tools.py",
+                 "docs/capacity-study.md", "docs/capacity-results.json"):
+        payload = archive.extractfile(f"shipment_exception_workspace-0.9.0/{name}")
+        assert payload.read() == (root / name).read_bytes(), f"Missing or stale capacity source payload: {name}"
     for version in (1, 2, 3):
         fixture = f"shipment_exception_workspace-0.9.0/tests/fixtures/schema_v{version}.sql"
         assert archive.extractfile(fixture).read() == (root / f"tests/fixtures/schema_v{version}.sql").read_bytes()

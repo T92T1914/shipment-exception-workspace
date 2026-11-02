@@ -4,7 +4,28 @@ Version 0.9.0 adds a separately configured synthetic reviewer deployment while p
 
 The [v0.8.1 verification](VERIFICATION-v0.8.1.md) preserves the accepted refresh correction and its original evidence. The [v0.8.0 verification](VERIFICATION-v0.8.0.md) preserves the native backup/restore campaign and adverse results. Neither is relabeled as a new v0.9.0 execution.
 
-## Current evidence and delivery
+## November 1 local capacity and recovery study
+
+The [separate study record](capacity-study.md) and
+[structured results](capacity-results.json) retain the frozen source, selected
+installed wheel, 24 fresh-state replicates, all scheduled/completed/refused/failed/
+dropped counts, low-sample limits and one controlled database interruption.
+All 5,400 measured requests completed correctly. Each larger-fixture 4-RPS
+replicate met its declared completion and scheduled-to-response p95 targets.
+The original uncertain intent replayed without another committed change or event.
+The unavailable reviewer request returned 500 during the outage; recovered
+reviewer denial was separately verified as 403. No optimization was selected.
+
+Local package preparation passed 364 backend/initial harness cases, one existing
+warning and no skips, plus the ordinary external installed consumer on a separate
+fresh database. The final harness-focused check passed 26 cases. Its stricter
+offline checker recomputed all 24 trials and their complete business snapshots
+and intent ledgers. Independent source/evidence review and current PR/main CI
+are distinct delivery gates. This study adds no new application version, hosted
+deployment or native restore qualification. The earlier release and hosted
+records below retain their original execution identities and counts.
+
+## v0.9.0 release evidence and delivery
 
 | Layer | Observed result |
 | --- | --- |
