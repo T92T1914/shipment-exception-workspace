@@ -75,3 +75,19 @@ One small accounting example explains the checker: one correct response, one
 completion, not 100%. `test_refusals_transport_errors_and_drops_remain_in_denominator`
 keeps that distinction executable. The study explains what ran and how to
 inspect its measured limits.
+
+## Dependency outage recovery in v0.9.1
+
+The [later outage correction](dependency-outages.md) adds a separate inspection
+route. Follow `connection()` in `app.py` into `availability.request_connection`,
+then the current database-backed session lookup. When that dependency is
+unavailable, the server cannot establish current authority. It returns the
+classified 503 instead of pretending a reviewer was already denied.
+
+For a pending action, inspect `sendChange()` and `synchronizeSession()` in
+`frontend/src/main.tsx`. A matching session check retains the original key/body
+for **Retry same change**. A failed or changed session retires the local intent
+and warns that the earlier write may already have committed. The API's saved
+receipt, current authorization and atomic transaction remain authoritative.
+These later checks do not relabel the October 26 captures or the capacity
+study's original outage 500 as v0.9.1 executions.

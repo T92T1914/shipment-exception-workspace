@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from .config import Settings
+from .availability import DependencyUnavailable, numeric_endpoint, request_connection
 from . import __version__
 from .db import PASSWORDS, connect, exception_record, require_current_schema, require_demo_identity
 from .login_admission import reserve_login
@@ -138,6 +139,10 @@ def create_app(settings: Settings):
         require_demo_identity(settings.database_url, settings.demo_password)
     else:
         require_current_schema(settings.database_url)
+    # Pin the successful startup endpoint for the narrow refusal diagnostic.
+    # A hostname, unknown address or failed startup is not an outage witness.
+    with connect(settings.database_url) as verified:
+        verified_endpoint = numeric_endpoint(verified.info.hostaddr, verified.info.port)
     @asynccontextmanager
     async def lifespan(app):
         anyio.to_thread.current_default_thread_limiter().total_tokens = 2
@@ -163,12 +168,30 @@ def create_app(settings: Settings):
         # Do not echo submitted passwords, payloads or internal validation context.
         return JSONResponse({"error": {"code": "invalid_input", "message": "Check the submitted fields."}}, 422)
 
+    def failure_message(request, unavailable):
+        if request.method in ("GET", "HEAD"):
+            return ("The workspace is temporarily unavailable. Check your session, then refresh the records."
+                    if unavailable else "The request could not be completed. Try again later.")
+        if request.url.path.startswith("/api/exceptions"):
+            return (("The workspace is temporarily unavailable. " if unavailable else "") +
+                    "The change could not be confirmed and may already be saved. "
+                    "Retry the same saved change only while your current access permits it, "
+                    "or review the records before starting a new change.")
+        return (("The workspace is temporarily unavailable. " if unavailable else "") +
+                "The request could not be confirmed. Check your current session before trying again.")
+
+    @app.exception_handler(DependencyUnavailable)
+    async def unavailable_handler(request, exc):
+        return JSONResponse({"error": {"code": "dependency_unavailable", "message": failure_message(request, True)}},
+                            503, headers={"Cache-Control": "no-store"})
+
     @app.exception_handler(Exception)
     async def unexpected_handler(request, exc):
-        return JSONResponse({"error": {"code": "internal_error", "message": "The change could not be completed. Retry the same request."}}, 500)
+        return JSONResponse({"error": {"code": "internal_error", "message": failure_message(request, False)}},
+                            500, headers={"Cache-Control": "no-store"})
 
     def connection():
-        with connect(settings.database_url) as conn:
+        with request_connection(lambda: connect(settings.database_url), verified_endpoint, settings.database_url) as conn:
             yield conn
 
     def session(request: Request, conn=Depends(connection)):

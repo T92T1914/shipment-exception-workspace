@@ -24,6 +24,13 @@ One controlled database stop/restart preserved the original intent, receipt,
 audit and final-state invariants. This is local evidence, separate from the
 hosted reviewer demo, with its workload and limits recorded alongside results.
 
+Current source v0.9.1 adds [explicit database-outage recovery](docs/dependency-outages.md).
+Classified unavailable reads return a sanitized 503. An uncertain change keeps
+its original explicit retry while the current session remains eligible. A failed
+session check retires private state and the local retry, with a warning that an
+earlier action may already be saved. This source update does not replace the
+accepted v0.9.0 hosted demo or its downloadable Release.
+
 Start with the [download and local installation guide](docs/install.md) or the
 [v0.9.0 operator walkthrough](docs/operator-walkthrough.md). The walkthrough shows
 actual creation, conflicting edits, an interrupted response, receipt replay and
@@ -319,7 +326,7 @@ npm --prefix frontend run build
 
 py -3.13 -m venv (Join-Path $state 'consumer-env')
 $consumerPython = Join-Path $state 'consumer-env\Scripts\python.exe'
-& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.0-py3-none-any.whl
+& $consumerPython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.1-py3-none-any.whl
 
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $pgState = Join-Path $state 'postgres'
@@ -371,7 +378,7 @@ GOMAXPROCS=2 RAYON_NUM_THREADS=2 npm --prefix frontend run build
 /path/to/private/build-env/bin/python tools/build_notices.py
 /path/to/private/build-env/bin/python -m build --no-isolation
 python3.13 -m venv /path/to/private/consumer-env
-/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.9.0-py3-none-any.whl
+/path/to/private/consumer-env/bin/python -m pip install -r requirements-lock.txt dist/shipment_exception_workspace-0.9.1-py3-none-any.whl
 export SHIPMENT_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:PORT/DEDICATED_DATABASE'
 export SHIPMENT_DEMO_PASSWORD='YOUR_PRIVATE_GENERATED_PASSWORD'
 /path/to/private/consumer-env/bin/shipment-workspace init
@@ -386,7 +393,7 @@ origin as the API, so the installed application needs no Vite development server
 
 ## Use an existing database
 
-Version 0.9.0 continues to use schema version 4. An existing schema 1, 2 or 3 database
+Version 0.9.1 continues to use schema version 4. An existing schema 1, 2 or 3 database
 needs the explicit migration below. Stop every application process using the
 dedicated database before changing its installed environment, and make a private
 backup with your PostgreSQL backup tooling before migration. Keep
@@ -396,21 +403,21 @@ general backup-restoration or downgrade procedure. The separate
 [local backup and restore guide](docs/backup-and-restore.md) defines a bounded
 PostgreSQL 18.1, same-owner, same-cluster route qualified with v0.8.0 and its
 tagged tools. It uses a distinct empty target and never initializes or seeds
-over restored state. This v0.9.0 deployment extension does not claim a newly
+over restored state. This v0.9.1 outage correction does not claim a newly
 executed native restore combination.
 
-Build the v0.9.0 wheel as above, then install it into a new environment. Here,
+Build the v0.9.1 wheel as above, then install it into a new environment. Here,
 `$state` names the existing private state directory, not the fresh-start example.
 Load `SHIPMENT_DATABASE_URL` from the retained connection record for the existing
 consumer database. Do not point it at another project or rerun the first-start
 database helper over existing state.
 
 ```powershell
-$upgradeEnv = Join-Path $state 'consumer-env-v090'
+$upgradeEnv = Join-Path $state 'consumer-env-v091'
 if (Test-Path -LiteralPath $upgradeEnv) { throw 'Choose a new unused environment path.' }
 py -3.13 -m venv $upgradeEnv
 $upgradePython = Join-Path $upgradeEnv 'Scripts\python.exe'
-& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.0-py3-none-any.whl
+& $upgradePython -m pip install -r requirements-lock.txt .\dist\shipment_exception_workspace-0.9.1-py3-none-any.whl
 ```
 
 For schema 1, 2 or 3, run the explicit migration before serving. An existing

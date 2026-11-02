@@ -1,5 +1,13 @@
 # Run the installed v0.9.0 application locally
 
+This guide retains the accepted v0.9.0 downloadable Release route. Current source
+v0.9.1 adds [dependency-outage recovery](dependency-outages.md), with its separately
+identified wheel and checks in [VERIFICATION.md](VERIFICATION.md). A source or
+Actions artifact does not silently replace the v0.9.0 Release asset. When using
+the v0.9.1 candidate, select its exact wheel and a new environment/directory;
+schema 4 and the pinned Python dependencies are unchanged. Do not reseed a
+retained workspace to upgrade it.
+
 The wheel contains the Python application, built React frontend, schema and third-party notices. Running it needs Python and PostgreSQL. It does not need Node, npm, a frontend build or a Vite development server.
 
 The directly qualified local combination is Windows x64, CPython 3.13.3 and PostgreSQL 18.1. The Python dependency lock remains pinned. Other environments need their own execution evidence. Source-building and the separately configured public reviewer deployment have different prerequisites.
