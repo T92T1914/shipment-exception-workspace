@@ -1,4 +1,61 @@
-# Shipment v0.9.0 native Render deployment
+# Shipment native Render deployment
+
+## Upgrade an existing schema-4 demo to v0.9.1
+
+The current build helper installs the exact v0.9.1 Release wheel. It does not
+build the application from its own checkout. Keep these four identities separate:
+application source `e631e638a4e73f7a8104fababc753f5761fd930c`, released wheel
+SHA256 `aaf7da963b3237e318d1e376e12f8c58c9e934b7f43880b6037784ca98901df6`,
+the separately reviewed helper checkout, and the provider deployment ID.
+The [Release notes](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
+record actual completion and its evidence. The archive at the unchanged v0.9.1
+tag still contains the historical v0.9.0 helper; use the later reviewed helper
+revision identified by the delivery record.
+
+For the existing demo, preserve its dedicated database, public origin, visitor
+credential, resource plan and startup command. Schema 4 and dependency pins are
+unchanged. Do not run `render_initial_setup.py`, `init`, `migrate`, `seed` or
+`provision-demo` during this upgrade. The retained initial-setup helper belongs
+to the v0.9.0 first-deployment route below.
+
+1. Record the current successful deployment, helper commit, release digest,
+   application source and complete relevant service configuration. Keep secret
+   values in the provider's storage. Verify the retained database is compatible
+   and retain a read-only business-state snapshot.
+2. Download and verify the published wheel. Run the actual helper under CPython
+   3.13.3 on Linux in a new directory outside the checkout. The
+   `Qualify published release wheel` workflow separately checks wrong-digest
+   refusal, installed identity and an ordinary consumer against its own new
+   PostgreSQL 18.1 database. This does not qualify native Linux outage handling.
+3. Keep automatic deploys off. Set only `SHIPMENT_RELEASE_SHA256` and
+   `SHIPMENT_SOURCE_REVISION` to the identities above through a save-only route
+   that preserves every other variable. A configuration updater may explicitly
+   trigger a deploy even when automatic deploys are off. Check its actual behavior.
+4. Deploy the reviewed helper commit explicitly, follow the returned deploy ID
+   to completion, and verify the download/build receipt, installed location and
+   version, readiness, reviewer list/detail/history and desktop/narrow journey.
+   `/api/version` contains configured metadata and is not independent provenance.
+5. Compare the preserved business state and service configuration. Authentication
+   may create or retire sessions; business records, audit events and receipts
+   must not be changed by this verification.
+
+Before starting, establish a usable rollback. Render artifact rollback reuses
+the selected prior build and its directly configured environment, start command
+and health path, but does not restore database history or overwrite saved current
+service configuration. Environment-group values and resource plans have separate
+behavior. Restore matching saved release settings when needed and verify the
+resulting package identity. Rebuilding the old helper with the retained old wheel
+is a distinct fallback, dependent on those downloads still being available.
+[Render rollback behavior](https://render.com/docs/rollbacks),
+[save-only environment API](https://api-docs.render.com/reference/update-env-vars-for-service),
+[exact-commit deployment](https://render.com/docs/deploys).
+
+## Historical v0.9.0 first deployment
+
+The remaining first-deployment recipe uses helpers and environment examples from
+application/helper commit `618aa4f18394064004318ea3619ae2412d609c8c`, available in
+the [v0.9.0 source](https://github.com/T92T1914/shipment-exception-workspace/tree/618aa4f18394064004318ea3619ae2412d609c8c/deploy).
+Do not combine its setup helper with the current v0.9.1 build helper.
 
 The [read-only synthetic demo](https://shipment-employer-demo.onrender.com/) was
 accepted on October 27, 2026. The [hosted record](hosted-demo.md) identifies its

@@ -1,5 +1,27 @@
 # Application verification and retained release evidence
 
+## v0.9.1 downloadable package and deployment helper
+
+The [v0.9.1 Release](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
+publishes the selected accepted Windows wheel and source archive without moving
+the original tag. Its companion installation guide supersedes the archive's
+older installation text. The archive retains its original v0.9.0 Render helper.
+
+The later helper selects the published v0.9.1 wheel, checks its digest before
+installation, and checks both installed version identities and the runtime import
+location. Focused regressions cover wrong versions, source-path leakage and
+missing frontend/notices while retaining the previous admission checks. The
+separate `Qualify published release wheel` workflow downloads those exact bytes,
+refuses a deliberate wrong digest, and runs the helper and ordinary installed
+restart consumer with a fresh PostgreSQL 18.1 database outside the checkout.
+
+The Release notes record executed results and the final helper/deployment
+identities as each delivery gate completes. Workflow definition alone is not a
+passing run. The ordinary source-built CI wheel, selected release wheel, provider
+deployment and Windows native outage evidence remain distinct. No dependency,
+application payload, schema or native restore qualification changed in the helper
+delivery.
+
 ## v0.9.1 dependency-outage recovery
 
 The [recovery guide](dependency-outages.md) explains the corrected response and
@@ -50,9 +72,9 @@ for that timeout path. It does not classify all timeouts, credential/TLS/schema
 errors or programming failures as unavailable. The one TCP diagnostic may add up
 to 2.5 seconds after the existing five-second connection attempt. There is no
 guessed recovery deadline, automatic transaction retry, failover qualification,
-new native restore result or production-availability claim. Source/CI artifact
-publication is separate from the unchanged downloadable v0.9.0 Release and
-accepted hosted demo. Exact-revision GitHub checks belong to this contribution's
+new native restore result or production-availability claim. At outage closeout,
+source/CI artifact publication was separate from the then-current v0.9.0 Release
+and hosted demo. The later distribution work is recorded above. Exact-revision GitHub checks belong to this contribution's
 PR and subsequent main run, not the historical runs below.
 
 ## v0.9.0 release and reviewer-deployment verification
