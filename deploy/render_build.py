@@ -1,6 +1,6 @@
-"""Install the reviewed Shipment v0.9.0 wheel for one native Render build.
+"""Install the reviewed Shipment v0.9.1 wheel for one native Render build.
 
-Candidate only. Supply the published wheel digest after release acceptance.
+Supply the published wheel digest and its accepted application revision.
 This helper never connects to PostgreSQL or provisions application data.
 """
 
@@ -17,9 +17,9 @@ from urllib.parse import urlsplit
 import venv
 
 
-VERSION = "0.9.0"
-WHEEL = "shipment_exception_workspace-0.9.0-py3-none-any.whl"
-WHEEL_URL = "https://github.com/T92T1914/shipment-exception-workspace/releases/download/v0.9.0/" + WHEEL
+VERSION = "0.9.1"
+WHEEL = f"shipment_exception_workspace-{VERSION}-py3-none-any.whl"
+WHEEL_URL = f"https://github.com/T92T1914/shipment-exception-workspace/releases/download/v{VERSION}/" + WHEEL
 LOCK_LF_SHA256 = "f56bdd4266247a765c201073c2dd94f8356550429c4fac563b3c747dd6643434"
 MAX_WHEEL_BYTES = 16 * 1024 * 1024
 
@@ -46,16 +46,16 @@ def release_identity(environ):
     expected = environ.get("SHIPMENT_RELEASE_SHA256", "")
     revision = environ.get("SHIPMENT_SOURCE_REVISION", "")
     if not re.fullmatch(r"[0-9a-f]{64}", expected) or expected == "0" * 64:
-        raise RuntimeError("Set SHIPMENT_RELEASE_SHA256 to the accepted public v0.9.0 wheel digest")
+        raise RuntimeError(f"Set SHIPMENT_RELEASE_SHA256 to the accepted public v{VERSION} wheel digest")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
-        raise RuntimeError("Set SHIPMENT_SOURCE_REVISION to the accepted v0.9.0 application commit")
+        raise RuntimeError(f"Set SHIPMENT_SOURCE_REVISION to the accepted v{VERSION} application commit")
     return expected, revision
 
 
 def verify_lock(raw):
     lock_bytes = raw.replace(b"\r\n", b"\n")
     if b"\r" in lock_bytes or hashlib.sha256(lock_bytes).hexdigest() != LOCK_LF_SHA256:
-        raise RuntimeError("Dependency lock differs from the reviewed v0.9.0 pins")
+        raise RuntimeError("Dependency lock differs from the reviewed pins")
 
 
 def admit_outputs(root):
@@ -79,7 +79,7 @@ def download_wheel(wheel, expected, *, open_url=None, clock=None):
         open_url = urllib.request.build_opener(ReleaseRedirect()).open
     deadline = clock() + 120
     digest, size = hashlib.sha256(), 0
-    request = urllib.request.Request(WHEEL_URL, headers={"User-Agent": "shipment-v0.9.0-release-consumer"})
+    request = urllib.request.Request(WHEEL_URL, headers={"User-Agent": f"shipment-v{VERSION}-release-consumer"})
     with open_url(request, timeout=30) as response, wheel.open("xb") as destination:
         if response.status != 200:
             raise RuntimeError("Public release wheel download did not return HTTP 200")
@@ -104,9 +104,34 @@ def prepare_runtime(runtime, env, inputs, *, builder=None, execute=None):
     return python
 
 
+def verify_installed_identity(module_path, package_version, distribution_version, prefix):
+    module = Path(module_path).resolve()
+    if not module.is_relative_to(Path(prefix).resolve()):
+        raise RuntimeError("Source-tree package leaked into runtime")
+    if package_version != VERSION or distribution_version != VERSION:
+        raise RuntimeError(f"Installed package and distribution must both be v{VERSION}")
+    package = module.parent
+    if not (package / "static" / "index.html").is_file():
+        raise RuntimeError("Installed package is missing its built frontend")
+    if not (package / "THIRD_PARTY_NOTICES.txt").is_file():
+        raise RuntimeError("Installed package is missing its dependency notices")
+    return {"installed_version": package_version, "installed_module": str(module), "installed_under_runtime": True,
+            "built_frontend_present": True, "notices_present": True}
+
+
+def inspect_installed_runtime():
+    # These imports run only inside the newly installed, isolated interpreter.
+    import importlib.metadata
+    import shipment_workspace
+
+    result = verify_installed_identity(shipment_workspace.__file__, shipment_workspace.__version__,
+                                      importlib.metadata.version("shipment-exception-workspace"), sys.prefix)
+    print(json.dumps(result))
+
+
 def main():
     if os.name != "posix" or sys.version_info[:3] != (3, 13, 3):
-        raise RuntimeError("This candidate requires Render's native CPython 3.13.3 Linux runtime")
+        raise RuntimeError("This helper requires the native CPython 3.13.3 Linux runtime")
     expected, revision = release_identity(os.environ)
     root = Path.cwd().resolve(strict=True)
     lock = root / "requirements-lock.txt"
@@ -123,21 +148,8 @@ def main():
          "--index-url", "https://pypi.org/simple", "-r", str(lock)], env, inputs)
     run([str(python), "-I", "-m", "pip", "--isolated", "install", "--no-deps", str(wheel)], env, inputs)
     run([str(python), "-I", "-m", "pip", "check"], env, inputs, timeout=60)
-    identity = r'''
-import importlib.metadata, json, pathlib, sys
-import shipment_workspace
-root = pathlib.Path(sys.prefix).resolve()
-module = pathlib.Path(shipment_workspace.__file__).resolve()
-assert module.is_relative_to(root), "Source-tree package leaked into runtime"
-assert shipment_workspace.__version__ == "0.9.0"
-assert importlib.metadata.version("shipment-exception-workspace") == "0.9.0"
-package = module.parent
-assert (package / "static" / "index.html").is_file()
-assert (package / "THIRD_PARTY_NOTICES.txt").is_file()
-print(json.dumps({"installed_version": shipment_workspace.__version__, "installed_under_runtime": True,
-                  "built_frontend_present": True, "notices_present": True}))
-'''
-    run([str(python), "-I", "-c", identity], env, inputs, timeout=60)
+    identity = 'import runpy, sys; runpy.run_path(sys.argv[1])["inspect_installed_runtime"]()'
+    run([str(python), "-I", "-c", identity, str(Path(__file__).resolve())], env, inputs, timeout=60)
     deployment_source = os.environ.get("RENDER_GIT_COMMIT")
     if deployment_source is not None and not re.fullmatch(r"[0-9a-f]{40}", deployment_source):
         raise RuntimeError("Provider checkout identity is not a complete Git commit ID")

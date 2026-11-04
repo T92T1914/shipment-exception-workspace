@@ -11,7 +11,13 @@ It has no carrier integration or operational users. GitHub Pages remains the
 The [operator walkthrough](operator-walkthrough.md) separately shows actual local
 creation, conflict, interrupted response, receipt replay and resolution.
 
-## Served package and environment
+The [v0.9.1 Release notes](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
+record the later package delivery and hosted upgrade separately. Check the
+[running version](https://shipment-employer-demo.onrender.com/api/version)
+against that delivery's wheel, helper and deployment receipts. The historical
+table and journeys below retain their original October 27 identities.
+
+## Original v0.9.0 served package and environment
 
 | Identity | Observed value |
 | --- | --- |
@@ -33,9 +39,9 @@ HTTPS version endpoint returned v0.9.0, the accepted revision and
 installed identity. The provider reported PostgreSQL major 18; no minor-version
 or native restore qualification is inferred.
 
-The deployed application remains at that accepted source even after later
-presentation/documentation commits. No new wheel, release or application feature
-was needed to publish this record.
+At this record's original publication, later presentation/documentation commits
+had not changed the deployed application. No new wheel, release or application
+feature was needed for that documentation contribution.
 
 ## Executed hosted checks
 

@@ -24,12 +24,14 @@ One controlled database stop/restart preserved the original intent, receipt,
 audit and final-state invariants. This is local evidence, separate from the
 hosted reviewer demo, with its workload and limits recorded alongside results.
 
-Current source v0.9.1 adds [explicit database-outage recovery](docs/dependency-outages.md).
+The [v0.9.1 Release](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
+adds [explicit database-outage recovery](docs/dependency-outages.md).
 Classified unavailable reads return a sanitized 503. An uncertain change keeps
 its original explicit retry while the current session remains eligible. A failed
 session check retires private state and the local retry, with a warning that an
-earlier action may already be saved. This source update does not replace the
-accepted v0.9.0 hosted demo or its downloadable Release.
+earlier action may already be saved. Downloaded-package, exact-wheel Linux and
+hosted upgrade results are recorded separately in the Release notes. Publishing
+a package alone does not upgrade the hosted service.
 
 Start with the [download and local installation guide](docs/install.md) or the
 [v0.9.0 operator walkthrough](docs/operator-walkthrough.md). The walkthrough shows
@@ -41,13 +43,15 @@ and choose **Enter synthetic demo**. It supplies its separate public reviewer
 credential. Browse the Northline queue, search references, inspect details and
 history, then sign out. Do not enter real shipment or personal data.
 
-The v0.9.0 hosted route passed actual HTTPS, reviewer-denial, desktop/narrow and
+The original v0.9.0 hosted route passed actual HTTPS, reviewer-denial, desktop/narrow and
 provider-restart checks on October 27, 2026. The
 [hosted acceptance record](docs/hosted-demo.md) separates those results from
 local staging and the operator walkthrough. Business writes and receipt replay
 are denied by the server. The [deployment guide](docs/deployment.md) records the
-explicit database/setup route, including Render's successful-deployment
-prerequisite for one-off jobs.
+existing-service upgrade route separately from historical first setup. The demo's
+[/api/version](https://shipment-employer-demo.onrender.com/api/version) reports its
+running package version and configured application revision. The Release notes
+separate package acceptance from the recorded deployment evidence.
 
 The [public-mode desktop](docs/assets/v0.9.0/public-desktop-light.png) and
 [narrow dark](docs/assets/v0.9.0/public-narrow-dark.png) captures show installed

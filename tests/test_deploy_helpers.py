@@ -68,7 +68,7 @@ def test_redirect_policy_refuses_other_hosts_credentials_downgrades_and_ports(bu
 
 def test_declared_https_github_asset_redirect_remains_admitted(build):
     build.validate_redirect("https://release-assets.githubusercontent.com/asset?synthetic-signed-query=retained")
-    assert build.WHEEL_URL == "https://github.com/T92T1914/shipment-exception-workspace/releases/download/v0.9.0/shipment_exception_workspace-0.9.0-py3-none-any.whl"
+    assert build.WHEEL_URL == "https://github.com/T92T1914/shipment-exception-workspace/releases/download/v0.9.1/shipment_exception_workspace-0.9.1-py3-none-any.whl"
 
 
 def test_actual_redirect_handler_checks_the_destination_before_following(build):
@@ -131,8 +131,55 @@ def test_dependency_lock_allows_only_line_ending_conversion(build):
     lf = original.replace(b"\r\n", b"\n")
     build.verify_lock(lf)
     build.verify_lock(lf.replace(b"\n", b"\r\n"))
-    with pytest.raises(RuntimeError, match="reviewed v0.9.0 pins"):
+    with pytest.raises(RuntimeError, match="reviewed pins"):
         build.verify_lock(lf.replace(b"fastapi==", b"fastapi!="))
+
+
+@pytest.fixture()
+def installed_identity_files(tmp_path):
+    runtime = tmp_path / "runtime"
+    package = runtime / "lib" / "site-packages" / "shipment_workspace"
+    (package / "static").mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "static" / "index.html").write_text("Synthetic built frontend", encoding="utf-8")
+    (package / "THIRD_PARTY_NOTICES.txt").write_text("Synthetic notices", encoding="utf-8")
+    return runtime, package
+
+
+def test_installed_identity_accepts_matching_versions_and_runtime_payload(build, installed_identity_files):
+    runtime, package = installed_identity_files
+    assert build.verify_installed_identity(package / "__init__.py", "0.9.1", "0.9.1", runtime) == {
+        "installed_version": "0.9.1", "installed_module": str((package / "__init__.py").resolve()),
+        "installed_under_runtime": True,
+        "built_frontend_present": True, "notices_present": True,
+    }
+
+
+@pytest.mark.parametrize("package_version, distribution_version", [
+    ("0.9.0", "0.9.1"), ("0.9.1", "0.9.0"), ("0.9.0", "0.9.0"),
+])
+def test_installed_identity_refuses_wrong_or_disagreeing_versions(
+    build, installed_identity_files, package_version, distribution_version,
+):
+    runtime, package = installed_identity_files
+    with pytest.raises(RuntimeError, match="both be v0.9.1"):
+        build.verify_installed_identity(package / "__init__.py", package_version, distribution_version, runtime)
+
+
+def test_installed_identity_refuses_source_import_outside_runtime(build, installed_identity_files, tmp_path):
+    runtime, _ = installed_identity_files
+    with pytest.raises(RuntimeError, match="Source-tree package"):
+        build.verify_installed_identity(tmp_path / "source" / "__init__.py", "0.9.1", "0.9.1", runtime)
+
+
+@pytest.mark.parametrize("missing, message", [
+    ("static/index.html", "built frontend"), ("THIRD_PARTY_NOTICES.txt", "dependency notices"),
+])
+def test_installed_identity_refuses_incomplete_payload(build, installed_identity_files, missing, message):
+    runtime, package = installed_identity_files
+    (package / missing).unlink()
+    with pytest.raises(RuntimeError, match=message):
+        build.verify_installed_identity(package / "__init__.py", "0.9.1", "0.9.1", runtime)
 
 
 def test_existing_provider_outputs_are_preserved_instead_of_automatically_replaced(build, tmp_path):

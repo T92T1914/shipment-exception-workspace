@@ -1,0 +1,98 @@
+name: Qualify published release wheel
+
+on:
+  push:
+    branches: ['delivery/**']
+    paths:
+      - 'deploy/render_build.py'
+      - 'requirements-lock.txt'
+      - 'tools/installed_consumer.py'
+      - '.github/workflows/release-wheel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-wheel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-release-wheel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.1@sha256:1090bc3a8ccfb0b55f78a494d76f8d603434f7e4553543d6e807bc7bd6bbd17f
+        env:
+          POSTGRES_USER: shipment_release_ci
+          POSTGRES_PASSWORD: synthetic-release-ci-only-password
+          POSTGRES_DB: shipment_release_consumer
+        ports: ['5432:5432']
+        options: >-
+          --cpus=2
+          --health-cmd "pg_isready -U shipment_release_ci -d shipment_release_consumer"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SHIPMENT_RELEASE_SHA256: aaf7da963b3237e318d1e376e12f8c58c9e934b7f43880b6037784ca98901df6
+      SHIPMENT_SOURCE_REVISION: e631e638a4e73f7a8104fababc753f5761fd930c
+      RENDER_GIT_COMMIT: ${{ github.sha }}
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      MAX_JOBS: '2'
+      PGOPTIONS: '-c max_parallel_workers_per_gather=0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13.3'
+      - name: Refuse a wrong digest before creating the runtime
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess, sys
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-wrong-digest'
+          root.mkdir()
+          shutil.copyfile('requirements-lock.txt', root / 'requirements-lock.txt')
+          env = {**os.environ, 'SHIPMENT_RELEASE_SHA256': '1' * 64}
+          result = subprocess.run([sys.executable, '-I', str(pathlib.Path('deploy/render_build.py').resolve())],
+                                  cwd=root, env=env, capture_output=True, text=True, timeout=180)
+          (root / 'rejection.log').write_text(result.stdout + result.stderr, encoding='utf-8')
+          assert result.returncode == 1
+          assert 'Downloaded wheel bytes do not match the accepted release digest' in result.stderr
+          assert not (root / '.shipment-runtime').exists()
+          wheel = root / '.shipment-release-inputs' / 'shipment_exception_workspace-0.9.1-py3-none-any.whl'
+          assert hashlib.sha256(wheel.read_bytes()).hexdigest() == os.environ['SHIPMENT_RELEASE_SHA256']
+          (root / 'result.json').write_text(json.dumps({'wrong_digest_refused': True,
+              'runtime_created': False, 'failed_download_bytes_preserved': True}) + '\n', encoding='utf-8')
+          PY
+      - name: Install the exact published wheel through the deployment helper
+        run: |
+          mkdir "$RUNNER_TEMP/release-build"
+          cp requirements-lock.txt "$RUNNER_TEMP/release-build/requirements-lock.txt"
+          cd "$RUNNER_TEMP/release-build"
+          python -I "$GITHUB_WORKSPACE/deploy/render_build.py"
+      - name: Exercise the isolated helper admission checks
+        run: |
+          "$RUNNER_TEMP/release-build/.shipment-runtime/bin/python" -I -m pytest -q --noconftest tests/test_deploy_helpers.py
+      - name: Exercise the installed release against a fresh synthetic database
+        env:
+          SHIPMENT_DATABASE_URL: postgresql://shipment_release_ci:synthetic-release-ci-only-password@127.0.0.1:5432/shipment_release_consumer
+        run: |
+          "$RUNNER_TEMP/release-build/.shipment-runtime/bin/python" -I tools/installed_consumer.py --python "$RUNNER_TEMP/release-build/.shipment-runtime/bin/python" --output "$RUNNER_TEMP/release-consumer"
+      - name: Retain the exact wheel and sanitized qualification records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: published-v091-linux-consumer
+          path: |
+            ${{ runner.temp }}/release-build/.shipment-release-inputs/*.whl
+            ${{ runner.temp }}/release-build/.shipment-release-inputs/build-receipt.json
+            ${{ runner.temp }}/release-consumer/result.json
+            ${{ runner.temp }}/release-wrong-digest/result.json
+            ${{ runner.temp }}/release-wrong-digest/rejection.log
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
