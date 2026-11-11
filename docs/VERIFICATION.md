@@ -26,8 +26,9 @@ delivery.
 
 The [recovery guide](dependency-outages.md) explains the corrected response and
 explicit user actions. The change was developed over accepted PR19 merge
-`8cb3de10985287187aa743271bb7e43a28d13eff`. The earlier capacity measurements and
-hosted v0.9.0 acceptance below keep their original identities.
+`8cb3de10985287187aa743271bb7e43a28d13eff`. The `v0.9.1` tag points at source
+revision `e631e638a4e73f7a8104fababc753f5761fd930c`. The earlier capacity
+measurements and hosted v0.9.0 acceptance below keep their original identities.
 
 The selected local v0.9.1 wheel has SHA256
 `aaf7da963b3237e318d1e376e12f8c58c9e934b7f43880b6037784ca98901df6`.
