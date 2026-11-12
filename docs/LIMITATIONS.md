@@ -130,7 +130,7 @@ practice or suitability for sensitive logistics data.
 - Mutation receipts and audit events have no automatic retention or archival
   policy. Expired sessions are cleaned up when a new anonymous session is created,
   rather than by a background maintenance service.
-- Version 0.9.0 retains schema 4. The explicit transactional upgrade from schema
+- Version 0.9.1 retains schema 4. The explicit transactional upgrade from schema
   1, 2 or 3 preserves existing users as operators and gives future omitted roles
   a reviewer default. Stop application processes and privately back up the
   dedicated database before that upgrade. There is

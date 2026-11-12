@@ -287,7 +287,7 @@ when you need a clean acceptance run.
 
 ## Schema upgrades
 
-Version 0.9.0 retains schema version 4. For schema 1, 2 or 3, stop every
+Version 0.9.1 retains schema version 4. For schema 1, 2 or 3, stop every
 application process using the dedicated database and take a private backup before
 running the installed
 wheel's explicit `migrate` command. Keep its connection record and credentials.
