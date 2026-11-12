@@ -1,6 +1,6 @@
 # Preserve a local workspace through backup and restore
 
-This route saves a trusted schema-4 Shipment workspace as a PostgreSQL custom
+This route saves a trusted schema 4 Shipment workspace as a PostgreSQL custom
 archive and restores it into a separately named empty database. The original
 workspace stays intact. The qualified combination is Windows x64, PostgreSQL
 18.1 client/server, CPython 3.13.3 and the ordinary v0.8.0 application wheel.
@@ -11,7 +11,7 @@ executed native combination. The qualification helper keeps its v0.8.0 admission
 check rather than silently admitting an unqualified version.
 
 This is a bounded local application handoff. It does not qualify power loss,
-storage corruption, cross-version restoration, failover, high availability,
+storage corruption, cross version restoration, failover, high availability,
 disaster recovery or production backup readiness. A process restart is a
 different test. Linux application CI does not by itself qualify this Windows
 native dump/restore route.
@@ -22,7 +22,7 @@ Use a private directory outside Git for connection records, passwords, dump
 archives and command logs. The archive contains private records, password
 hashes, sessions and retry receipts. Restore only an archive you made from a
 trusted source. A digest or a successful archive listing does not make an
-arbitrary third-party dump safe: restoring can execute code chosen by the source
+arbitrary third party dump safe: restoring can execute code chosen by the source
 superuser. [PostgreSQL's warning](https://www.postgresql.org/docs/18/app-pgdump.html#APP-PGDUMP-DESCRIPTION)
 applies to partial restores too.
 
@@ -31,25 +31,25 @@ owner. It admits the current nine application tables, their constraints,
 indexes and identity sequence, with no extra schemas, functions, application
 extensions or custom scalar types. The qualification fixture uses the helper's
 database owner with permission to create disposable databases and read cluster
-identity. It creates no role or tablespace. A single-database dump does not save
-cluster-wide roles or tablespaces; those must already exist under a separately
-qualified cluster-recovery procedure. See [SQL dump guidance](https://www.postgresql.org/docs/18/backup-dump.html).
+identity. It creates no role or tablespace. A single database dump does not save
+cluster wide roles or tablespaces. Those must already exist under a separately
+qualified cluster recovery procedure. See [SQL dump guidance](https://www.postgresql.org/docs/18/backup-dump.html).
 
 The qualification uses the new cluster's bootstrap superuser. Database ownership
 alone does not grant access to `pg_control_system()`. Delegating production
-database privileges is outside this route; do not grant privileges merely to
+database privileges is outside this route. Do not grant privileges merely to
 make this fixture pass.
 
-The fixture uses default per-database settings. This no-create recipe does not
-restore database-level configuration, cluster configuration, roles or
+The fixture uses default per database settings. This no create recipe does not
+restore database level configuration, cluster configuration, roles or
 tablespaces. If an existing workspace depends on other settings, stop and
 qualify those separately rather than assuming the record comparison covers them.
 
 Stop the source application and any fixture writers you own before taking its
-comparison fingerprint. Keep them stopped through the dump and post-dump
+comparison fingerprint. Keep them stopped through the dump and post dump
 fingerprint, while leaving PostgreSQL running. This makes the controlled
 comparison meaningful. PostgreSQL can make a consistent dump with concurrent
-writers; the quiet-source rule here is not a PostgreSQL requirement or a
+writers. The quiet source rule here is not a PostgreSQL requirement or a
 general concurrency lock.
 
 Do not use a retained accepted database as an acceptance fixture. The executable
@@ -60,7 +60,7 @@ seeding.
 ## Guarded native recipe
 
 Run from this source checkout with the ordinary installed environment's Python.
-The tools import Psycopg from that environment; they do not import the app from
+The tools import Psycopg from that environment. They do not import the app from
 `src`. Keep `PYTHONPATH` unset. Replace every private placeholder explicitly.
 
 ```powershell
@@ -82,7 +82,7 @@ database, user and password, as either a PostgreSQL URL or keyword string. The
 helper rejects other connection options and inherited endpoint/password
 defaults. Never print the connection value. The target name below is a new,
 simple database identifier owned by that same role. An existing name causes
-creation to fail; do not drop it to make the recipe pass.
+creation to fail. Do not drop it to make the recipe pass.
 
 This direct loopback recipe also refuses a forwarded connection when the
 server's reported address or port differs from that explicit endpoint. Docker
@@ -135,30 +135,30 @@ index, function, type, large object, extra schema or default privilege is refuse
 
 The normal restore reads the complete archive with `--single-transaction`.
 PostgreSQL documents that this implies exit on error and cannot be combined
-with parallel restore jobs. This route uses neither `--clean` nor archive-driven
+with parallel restore jobs. This route uses neither `--clean` nor archive driven
 `--create`. Those options can drop objects or select the archived database name.
 See [PostgreSQL 18 pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html).
 
 ## Inspect the restored application
 
 Point a fresh ordinary installed environment at the target connection. Do not
-run `init`, `migrate`, `seed`, or the original fresh-fixture installed consumer
+run `init`, `migrate`, `seed`, or the original fresh fixture installed consumer
 over it. The logical comparison must already have passed before application
 startup or session requests. Start only `shipment-workspace serve`, then sign
 in with the existing synthetic account credentials and inspect current records
 and saved history. The target is a separate database with a different identity,
 not an identical physical database directory.
 
-Restored session rows retain their actual expiry, CSRF and current-access rules.
-A saved session may already be expired. Fresh sign-in is an explicit action;
-this guide does not extend expiry or silently authenticate you. Login-admission
+Restored session rows retain their actual expiry, CSRF and current access rules.
+A saved session may already be expired. Fresh sign in is an explicit action.
+This guide does not extend expiry or silently authenticate you. Login admission
 timestamps also retain their values, while the current clock determines whether
 a saved window remains active.
 
-A database archive does not restore a browser's lost in-memory retry key/body.
+A database archive does not restore a browser's lost in memory retry key/body.
 The qualification replays one declared synthetic receipt under the same actor,
 key and body with current authorization. It does not supply a receipt browser,
-cross-device recovery or automatic replay of uncertain business writes.
+cross device recovery or automatic replay of uncertain business writes.
 
 ## Reproduce the qualification with disposable state
 
@@ -175,7 +175,7 @@ Use a new output directory and the actual port from that cluster's record:
 
 Only the fresh source is initialized and seeded. It receives actual API
 creation, assignment and resolution history. A declared expired session and a
-real unused sequence value test expiry and sequence-gap preservation. Source
+real unused sequence value test expiry and sequence gap preservation. Source
 writers stop before the comparison. The restored consumer polls a static route
 for readiness and never initializes or edits admission fixtures on the target.
 
@@ -187,10 +187,10 @@ acceptance criterion. Planner statistics, database OIDs and physical file bytes
 are outside that logical comparison.
 
 The run also creates distinct disposable targets for missing/truncated archives,
-nonempty-object guard cases and a deliberately incomplete TOC restore. That
+nonempty object guard cases and a deliberately incomplete TOC restore. That
 last control omits one table definition while retaining its data. The native
 command fails after earlier DDL/data work, and actual target readback checks the
-single-transaction rollback. The normal restore uses the full archive.
+single transaction rollback. The normal restore uses the full archive.
 
 Preserve each failed archive, log and target. A nonzero exit is failure even if
 some earlier output looked successful. Do not run `--clean`, reseed, silently

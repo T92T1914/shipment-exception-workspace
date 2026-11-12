@@ -6,23 +6,23 @@ Public demo mode is a reviewer experience. Visitors can browse records and histo
 
 ## 1. Create the record
 
-Alex enters reference `NL-EMPLOYER-001`, a summary, details and high priority through **New exception**. The saved record starts open and unassigned at version 1. Its first history event records creation.
+Alex enters reference `NL-EMPLOYER-001`, a summary, details and high priority through `New exception`. The saved record starts open and unassigned at version 1. Its first history event records creation.
 
 ![Installed operator application showing the newly created synthetic exception at version 1 with one creation event](assets/v0.9.0/operator-01-created.png)
 
 ## 2. Refuse a stale edit and refresh
 
-A separate actual API request assigns the record to Sam, saving version 2 while the page still displays version 1. Alex then selects Casey and chooses **Save assignment**. The server returns HTTP 409 `version_conflict`, and the page requires **Refresh record**. That refused attempt adds no history event. Refreshing reveals Sam's saved assignment and version 2 before another edit.
+A separate actual API request assigns the record to Sam, saving version 2 while the page still displays version 1. Alex then selects Casey and chooses `Save assignment`. The server returns HTTP 409 `version_conflict`, and the page requires `Refresh record`. That refused attempt adds no history event. Refreshing reveals Sam's saved assignment and version 2 before another edit.
 
-![The page retains version 1 and shows the real stale-edit warning with an explicit Refresh record action](assets/v0.9.0/operator-02-stale-conflict.png)
+![The page retains version 1 and shows the real stale edit warning with an explicit Refresh record action](assets/v0.9.0/operator-02-stale-conflict.png)
 
 ## 3. Recover an interrupted response
 
-Alex selects Casey again. For this controlled case, the headless check forwards the request to the actual server, receives its committed version-3 response, then deliberately drops delivery to the page. This simulates a lost response after a successful write. The page still shows version 2 and warns that the change may already be saved.
+Alex selects Casey again. For this controlled case, the headless check forwards the request to the actual server, receives its committed version 3 response, then deliberately drops delivery to the page. This simulates a lost response after a successful write. The page still shows version 2 and warns that the change may already be saved.
 
 ![The real application warns that the change may already be saved and offers Retry same change while the visible record remains at version 2](assets/v0.9.0/operator-03-interrupted-response.png)
 
-Choosing **Retry same change** sends the original key and body. The actual server returns its saved response with `idempotency-replayed: true`. The two attempts produce one Casey assignment event. Server readback remains at version 3 with three events, matching the state before the retry. A stale edit needs a current-state refresh. An uncertain committed intent needs its original identity, while the current session remains authorized.
+Choosing `Retry same change` sends the original key and body. The actual server returns its saved response with `idempotency-replayed: true`. The two attempts produce one Casey assignment event. Server readback remains at version 3 with three events, matching the state before the retry. A stale edit needs a current state refresh. An uncertain committed intent needs its original identity, while the current session remains authorized.
 
 ## 4. Resolve and inspect the complete history
 
@@ -43,7 +43,7 @@ The desktop page and API readback agree on the resolved state and four events. R
 
 A fresh headless context signs in, opens the same finished record at 390 pixels wide with a dark appearance preference, then reloads it. Version 4, the resolution and all four events remain available. The checked page fits the viewport without horizontal scrolling.
 
-![The same resolved version-4 record and four history events at a 390-pixel-wide viewport with dark appearance](assets/v0.9.0/operator-05-narrow-resolved.png)
+![The same resolved version 4 record and four history events at a 390 pixel wide viewport with dark appearance](assets/v0.9.0/operator-05-narrow-resolved.png)
 
 ## Capture identity and limits
 
@@ -51,15 +51,15 @@ These captures came from the ordinary installed v0.9.0 candidate at source [`ff0
 
 This is execution at that candidate, not a fresh run at a later final head. Applying the captures to a later release requires a documented source or payload comparison. The [verification notes](VERIFICATION.md) carry the current delivery identity and separate local, installed, CI and hosted results.
 
-The interruption was deliberately introduced after a real server commit. It is not an observed public-host outage. Viewport and appearance emulation do not qualify physical devices, every accessibility setting, production operation or recovery from a failed database. All people, organizations and shipment records shown here are synthetic.
+The interruption was deliberately introduced after a real server commit. It is not an observed public host outage. Viewport and appearance emulation do not qualify physical devices, every accessibility setting, production operation or recovery from a failed database. All people, organizations and shipment records shown here are synthetic.
 
 ## Follow the queue into SQL and recovery
 
 The [local capacity study](capacity-study.md) adds a separate inspection route.
-Start with its larger-fixture 4-RPS rows, then follow `GET /api/exceptions` in
+Start with its larger fixture 4 RPS rows, then follow `GET /api/exceptions` in
 `app.py` through current session/organization admission into
 `queue_browsing.page_for`. The parameterized query applies organization scope,
-literal search and stable ordering before its lookahead limit. A 20-record
+literal search and stable ordering before its lookahead limit. A 20 record
 response does not prove the database scanned only 20 records. The instrumented
 query plan and complete HTTP response clock measure different work.
 
@@ -67,8 +67,8 @@ Inspect the recovery timeline next. Readiness failed while the owned database
 was stopped. A committed reply withheld by the harness remained an uncertain
 intent for its logical caller. After restart, retrying the original key/body
 returned the saved response without another mutation or audit event. This is
-a new local database-interruption result, separate from these October 26 UI
-captures and from the public hosted reviewer's read-only route.
+a new local database interruption result, separate from these October 26 UI
+captures and from the public hosted reviewer's read only route.
 
 One small accounting example explains the checker: one correct response, one
 503 refusal, one transport failure and one generator drop mean 1/4 correct
@@ -80,13 +80,13 @@ inspect its measured limits.
 
 The [later outage correction](dependency-outages.md) adds a separate inspection
 route. Follow `connection()` in `app.py` into `availability.request_connection`,
-then the current database-backed session lookup. When that dependency is
+then the current database backed session lookup. When that dependency is
 unavailable, the server cannot establish current authority. It returns the
 classified 503 instead of pretending a reviewer was already denied.
 
 For a pending action, inspect `sendChange()` and `synchronizeSession()` in
 `frontend/src/main.tsx`. A matching session check retains the original key/body
-for **Retry same change**. A failed or changed session retires the local intent
+for `Retry same change`. A failed or changed session retires the local intent
 and warns that the earlier write may already have committed. The API's saved
 receipt, current authorization and atomic transaction remain authoritative.
 These later checks do not relabel the October 26 captures or the capacity

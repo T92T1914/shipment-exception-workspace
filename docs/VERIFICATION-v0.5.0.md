@@ -20,12 +20,12 @@ browser profile, clipboard, audio or visible application was used.
 | Check | Actual result |
 | --- | --- |
 | TypeScript/Vite | Production build passed |
-| Wheel/source archive | Built v0.5.0; package source/SQL identity, built UI, notices and all three immutable schema fixtures checked |
-| Fresh installation | Imported v0.5.0 from the external environment's site-packages; pip check passed |
+| Wheel/source archive | Built v0.5.0. Package source/SQL identity, built UI, notices and all three immutable schema fixtures checked |
+| Fresh installation | Imported v0.5.0 from the external environment's site-packages. Pip check passed |
 | Installed PostgreSQL suite | 221 passed in 151.51 seconds, with one retained TestClient deprecation warning |
 | Installed restart consumer | Operator receipt/admission/cursor behavior and reviewer reads/business-write denials passed before and after API restart |
 | Built browser journeys | All 25 passed in 40.0 seconds, including desktop/narrow reviewers, stale access and denied replay after an actual interrupted commit |
-| Independent source and claim review | Separate agent found no remaining material semantic, authorization, privacy or public-claim issue in the inspected composition |
+| Independent source and claim review | Separate agent found no remaining material semantic, authorization, privacy or public claim issue in the inspected composition |
 
 The local wheel SHA-256 is
 `d35ef148acc2145fb829a3b4e47fc09d1fc4e42be94c3e4edc8114c6d853213e`.
@@ -41,16 +41,16 @@ No previously accepted consumer was migrated or reseeded.
 
 The suite retains the prior workflow, queue, admission and organization checks.
 Fourteen new reviewer test instances cover both organizations' own reads and
-foreign-detail 404s, all three valid business-mutation routes, forged claims,
+foreign detail 404s, all three valid business mutation routes, forged claims,
 current role changes on an existing cookie, denied keys, saved receipts across
 downgrade/restored access, default roles and repeated seeding. Complete exception,
 event and receipt rows are compared around denials. Session/authentication
 maintenance is separate, so these are not claims of zero database writes.
 
-The downgrade-first race captures an already-read operator principal, holds an
-ordinary non-key role update, then requires actual PostgreSQL lock-wait evidence
+The downgrade first race captures an already read operator principal, holds an
+ordinary nonkey role update, then requires actual PostgreSQL lock wait evidence
 before committing the downgrade. The waiting mutation denies without a business
-effect. The mutation-first race holds the actual exception row, confirms the
+effect. The mutation first race holds the actual exception row, confirms the
 authorized mutation is waiting there, and confirms the competing role update
 waits behind that mutation. Releasing the business row permits its authorized
 commit before the downgrade. Events, finite diagnostics and cleanup bound both
@@ -62,9 +62,9 @@ assign and resolve receipts are denied after downgrade, remain unchanged, and
 can replay their historical results after operator access returns. These are
 specific application/transaction tests, not a general revocation or audit claim.
 
-Eight new migration instances cover the exact accepted schema-3 fixture,
+Eight new migration instances cover the exact accepted schema 3 fixture,
 explicit upgrade, preserved sessions/receipts/history/admission, operator backfill,
-future reviewer default, repeat migration, competing migrators and a final-stage
+future reviewer default, repeat migration, competing migrators and a final stage
 failure starting from each of schemas 1, 2 and 3. Earlier upgrade checks remain.
 The accepted fixture Git blobs are `a5c75d707fa08e65fc6d539424d7be333c8040c4`,
 `c8f6bf47db94ae6b0dffeffd136606df1e2029be` and
@@ -76,7 +76,7 @@ are not migration fixtures.
 
 The consumer serves packaged assets from its installed environment, signs in an
 operator and reviewer, and checks reviewer reads plus three valid denied writes
-against full business-row snapshots before and after API restart. Two successful
+against full business row snapshots before and after API restart. Two successful
 sign-ins and 38 real failed verifications fill the global login budget. Restart
 preserves the exhausted budget and authenticated workflow. Only disposable
 admission timestamps expire before the separate browser campaign.
@@ -84,25 +84,25 @@ admission timestamps expire before the separate browser campaign.
 The 25 serial journeys retain the previous 21 and add desktop/narrow reviewer
 reading, queue navigation, history and logout with no business POST. Direct
 `#new` navigation cannot expose intake. A stale operator's actual write receives
-403 after fixture demotion; explicit refresh observes current access. Another
+403 after fixture demotion. Explicit refresh observes current access. Another
 case obtains a real committed assignment response, drops its delivery, demotes
 the actor, and sends the same retry key/body. The real 403 leaves the committed
 record/history unchanged and the UI explains that the earlier change may be
 saved. It retires the tab's intent and performs no automatic further POST.
 
 The [desktop reviewer](assets/desktop-reviewer.png) and
-[390-pixel reviewer](assets/narrow-reviewer.png) captures were generated from
+[390 pixel reviewer](assets/narrow-reviewer.png) captures were generated from
 those checks and visually inspected. They contain synthetic records. Native
-translation-hint, viewport-fit, stale-response and ordinary operator retry checks
-remain. This is isolated headless evidence, not physical-device, screen-reader
-or translation-provider acceptance.
+translation hint, viewport-fit, stale response and ordinary operator retry checks
+remain. This is isolated headless evidence, not physical device, screen reader
+or translation provider acceptance.
 
 ## Adverse results, review and limits
 
 The first source regression campaign reported nine failures and 198 passes.
-All nine failures were retained literal-data tests expecting four users after
-the seed gained two reviewers. Three exact-count assertions now expect six,
-preserving their users-table and literal-data checks. The focused follow-up
+All nine failures were retained literal data tests expecting four users after
+the seed gained two reviewers. Three exact count assertions now expect six,
+preserving their users table and literal data checks. The focused follow up
 passed 31 checks, followed by the complete installed campaign above. The earlier
 failures remain retained rather than being relabeled as passes.
 
@@ -112,7 +112,7 @@ private logs, connection records and database files stay outside the repository.
 Fixture helpers require explicit disposable URLs and expose no HTTP controls.
 
 Code Review had no exposed tool in this session. Semantic/security and public
-claim review came from a separate agent; GitHub supplies actual CI diagnostics.
+claim review came from a separate agent. GitHub supplies actual CI diagnostics.
 Neither is a human audit, penetration test, security certification or production
 acceptance. Current primary OWASP/PostgreSQL/FastAPI sources support design
 rationale, not measured effectiveness or employer endorsement.
@@ -121,7 +121,7 @@ The [Actions workflow](https://github.com/T92T1914/shipment-exception-workspace/
 rebuilds on Ubuntu 24.04 with the pinned PostgreSQL 18.1 container, repeats the
 installed suite, installs a separate consumer and runs all 25 journeys. Hosted
 results are separate from Windows acceptance and must match the current revision.
-A tag identifies source; Actions artifacts expire and are not permanent release
+A tag identifies source. Actions artifacts expire and are not permanent release
 assets. See current PR/main run pages for actual tested identities and outcomes.
 
 Role management, privileged database tampering, instant cancellation of earlier

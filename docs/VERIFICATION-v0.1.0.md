@@ -15,7 +15,7 @@ package. Its repository fingerprint stayed unchanged across all six checks.
 
 | Evidence | Actual result |
 | --- | --- |
-| PostgreSQL API checks | 33 passed, including authorization, two-request races, idempotency, constraints, CSRF and injected rollback |
+| PostgreSQL API checks | 33 passed, including authorization, two request races, idempotency, constraints, CSRF and injected rollback |
 | TypeScript and Vite build | Passed, built assets included in the Python wheel |
 | Installed consumer | Passed outside the checkout, imported from its isolated environment's site-packages |
 | API process restart | Session, committed assignment and stored retry response survived a fresh process |
@@ -24,8 +24,8 @@ package. Its repository fingerprint stayed unchanged across all six checks.
 | Desktop and narrow viewport | 1440 by 1000 and 390 by 844, keyboard focus and no horizontal overflow checked |
 | Package content check | UI, SQL, Python source identity and dependency notices checked inside the wheel |
 | Dependency consistency | `pip check` passed. npm production dependency audit reported zero known vulnerabilities at the time of the query |
-| Independent source review | Authorization, transactions, frontend races and owned-process cleanup reviewed by a separate agent. Findings were corrected and focused regressions added |
-| Remote CI and Code Review | Linux build, 33 PostgreSQL API checks, installed restart and seven browser journeys passed. Code Review independently read the exact-head successful CI status and job log. It supplied CI diagnostics, not semantic source review |
+| Independent source review | Authorization, transactions, frontend races and owned process cleanup reviewed by a separate agent. Findings were corrected and focused regressions added |
+| Remote CI and Code Review | Linux build, 33 PostgreSQL API checks, installed restart and seven browser journeys passed. Code Review independently read the exact head successful CI status and job log. It supplied CI diagnostics, not semantic source review |
 
 ## Hosted acceptance
 
@@ -41,10 +41,10 @@ installed into a fresh environment outside the checkout, restarted the API and
 passed all seven browser journeys. Its wheel SHA-256 is
 `41a5349be55e1130d4028d0d7a22d8dea9021517b6ba38aaf6e2ce33718ffce9`.
 The run's `installed-workflow-wheel` artifact contains that wheel and the browser
-summary, with a 14-day retention period. A wheel from another build can have a
+summary, with a 14 day retention period. A wheel from another build can have a
 different archive hash. These recorded identities describe the actual artifacts.
 
-Later documentation-only commits still run the same workflow. The [PR](https://github.com/T92T1914/shipment-exception-workspace/pull/1)
+Later documentation only commits still run the same workflow. The [PR](https://github.com/T92T1914/shipment-exception-workspace/pull/1)
 and [Actions page](https://github.com/T92T1914/shipment-exception-workspace/actions/workflows/verify.yml)
 show the exact current revision and status. Successful Windows and Linux checks
 qualify these two executed environments, without a broader compatibility claim.
@@ -61,7 +61,7 @@ gateway outage or a physical phone.
 
 The rollback test installs a temporary trigger in the disposable test database.
 It rejects an audit insert after the exception update, then checks that the
-record, event and retry receipt all roll back. No fault-injection endpoint is
+record, event and retry receipt all roll back. No fault injection endpoint is
 included in the application.
 
 ## Adverse results retained
@@ -70,7 +70,7 @@ The first TypeScript build rejected the CSS import because its Vite type
 declaration was missing. Adding the declaration corrected the build.
 The first mobile journey completed its writes but timed out on the exact
 accessible name of the status filter. An explicit accessible label corrected
-that interaction. The later six-case run and final seven-case run passed.
+that interaction. The later six case run and final seven case run passed.
 
 Independent review found and corrected a receipt CHECK that accepted a partial
 NULL state, malformed CSRF handling, subprocess recovery gaps, stale browser
@@ -79,12 +79,12 @@ also needed an early selection guard before advancing the request generation.
 The PostgreSQL and browser regressions exercise the corrected boundaries.
 
 The first hosted workflow attempts failed before application setup. The runner
-passed a single-quoted health command through Docker's argument parser, which
-treated its `-U` as a Docker flag. The service options now use a double-quoted
+passed a single quoted health command through Docker's argument parser, which
+treated its `-U` as a Docker flag. The service options now use a double quoted
 health command. This was a CI setup failure, not a failed API assertion.
 
 After container setup was corrected, the Linux build and all 33 PostgreSQL API
-checks passed. The installed-consumer runner then selected the base interpreter
+checks passed. The installed consumer runner then selected the base interpreter
 by resolving the virtual environment executable's symlink. Preserving the
 absolute venv path corrects that runner error. It was not a wheel import failure
 inside the intended installed environment.
@@ -92,11 +92,11 @@ inside the intended installed environment.
 The initial successful hosted run warned that its four pinned actions declared
 Node 20 and were forced onto Node 24 by GitHub. Their official released Node 24
 action revisions now replace those pins. Checkout credentials and automatic
-package-manager caching are disabled because this verification job needs neither.
+package manager caching are disabled because this verification job needs neither.
 
 The initial PostgreSQL helper hung waiting for an inherited subprocess pipe
-after the database started. File-based subprocess capture corrected the helper,
-and the exact owned cluster was stopped. The first installed-consumer readiness
+after the database started. File based subprocess capture corrected the helper,
+and the exact owned cluster was stopped. The first installed consumer readiness
 attempt was affected by inherited HTTP proxy configuration. Loopback probes now
 disable proxy inheritance. A subsequent repeated setup found that seed correctly
 preserved the old password while the runner generated a new one. The runner now
@@ -108,11 +108,11 @@ The executed tests pass. This warning is retained, not suppressed or described
 as a failed assertion. Browser output also reports the runner's NO_COLOR and
 FORCE_COLOR environment overlap.
 
-Private raw logs, generated credentials, database files and failed-run
+Private raw logs, generated credentials, database files and failed run
 screenshots stay outside the checkout. The public screenshots contain only the
 synthetic fixture. No user browser, screen, clipboard or existing project was
 used. A Python vulnerability audit, production deployment, penetration test,
-load study and physical-device acceptance were not performed.
+load study and physical device acceptance were not performed.
 
 ## Repeating the acceptance route
 
@@ -126,7 +126,7 @@ and invoke `tools/installed_consumer.py --python PATH_TO_INSTALLED_PYTHON
 containing httpx. It creates private generated credentials and reports the
 installed module path. Keep its output directory out of Git. It deliberately
 preserves its password across setup retries, and expects fresh workflow state
-for the one-event restart assertion.
+for the one event restart assertion.
 
 Load `base_url` and `demo_password` from that directory's `consumer-state.json`
 into `WORKSPACE_BASE_URL` and `WORKSPACE_DEMO_PASSWORD`. From `frontend`, run
