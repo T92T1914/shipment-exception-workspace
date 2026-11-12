@@ -11,6 +11,12 @@ It has no carrier integration or operational users. GitHub Pages remains the
 The [operator walkthrough](operator-walkthrough.md) separately shows actual local
 creation, conflict, interrupted response, receipt replay and resolution.
 
+On November 11, 2026 the hosted demo's
+[/api/version](https://shipment-employer-demo.onrender.com/api/version) answered with version 0.9.1
+and revision `e631e638a4e73f7a8104fababc753f5761fd930c`. That is an observation of
+the running version. It is not a new acceptance, and the October 27 acceptance
+below remains the one for v0.9.0.
+
 The [v0.9.1 Release notes](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
 record the later package delivery and hosted upgrade separately. Check the
 [running version](https://shipment-employer-demo.onrender.com/api/version)

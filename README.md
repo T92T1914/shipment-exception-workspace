@@ -43,7 +43,9 @@ and choose **Enter synthetic demo**. It supplies its separate public reviewer
 credential. Browse the Northline queue, search references, inspect details and
 history, then sign out. Do not enter real shipment or personal data.
 
-The original v0.9.0 hosted route passed actual HTTPS, reviewer-denial, desktop/narrow and
+On November 11, 2026 the hosted demo reported version 0.9.1 at revision
+`e631e638a4e73f7a8104fababc753f5761fd930c`. That is an observed running version
+and not a new acceptance. The original v0.9.0 hosted route passed actual HTTPS, reviewer-denial, desktop/narrow and
 provider-restart checks on October 27, 2026. The
 [hosted acceptance record](docs/hosted-demo.md) separates those results from
 local staging and the operator walkthrough. Business writes and receipt replay
