@@ -20,7 +20,7 @@ No screen, interactive browser profile, clipboard, audio or visible app was used
 | --- | --- |
 | TypeScript and Vite | Production build passed |
 | Wheel and source archive | Built v0.4.0. Application/SQL byte identity, frontend, notices and both immutable SQL fixtures checked |
-| Fresh installation | Imported v0.4.0 from the external environment's site-packages. Pip check passed |
+| Fresh installation | Imported v0.4.0 from the external environment's site-packages. The `pip check` command passed |
 | Installed PostgreSQL suite | 199 passed in 128.26 seconds, including 67 queue tests and retained workflow/admission checks |
 | Installed API restart | A bounded queue cursor continued after restart. Durable creation/assignment receipt replay and exhausted login admission remained effective |
 | Built browser journeys | All 21 passed in 31.5 seconds, including multipage desktop and narrow screen queue behavior |

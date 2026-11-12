@@ -84,7 +84,7 @@ claimed to remain active indefinitely.
 ## Actual refusal and failure controls
 
 The normal route restored the entire trusted custom format archive using
-pg_restore --single transaction, with no --clean, archive driven --create or
+pg_restore --single-transaction, with no --clean, archive driven --create or
 parallel jobs. Separate disposable controls established:
 
 - Two connection syntaxes resolving to the same actual database were refused

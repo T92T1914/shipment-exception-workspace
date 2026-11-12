@@ -40,7 +40,7 @@ clipboard, audio or visible application was used.
 | Frontend and package | Production builds, wheel/source contents, built UI, notices and immutable SQL fixtures passed |
 | Initial installed backend | 263 tests passed in 202.63 seconds on 3b9ea4c, with one retained TestClient warning |
 | Initial browser | 20 passed, one timeout, 21 not run. This campaign failed |
-| Corrected fresh installation | Ordinary v0.7.0 imported from external site-packages on Python 3.13.3. Pip check passed |
+| Corrected fresh installation | Ordinary v0.7.0 imported from external site-packages on Python 3.13.3. The `pip check` command passed |
 | Backend evidence reuse | Exact Python/SQL wheel bytes, backend tests, consumer and pinned inputs remained unchanged after the frontend only correction |
 | Corrected installed consumer | Session rotation, retired context denial, optional header compatibility and real process restart checks passed alongside retained workflow acceptance |
 | Corrected built browser | All 42 passed, approximately 1.4 minutes, JSON duration 81.75 seconds, with zero skipped, unexpected or flaky |

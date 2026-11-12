@@ -126,7 +126,7 @@ Review the helpers under `deploy/` and configure these exact commands in the sel
 | Health check | `/api/ready` |
 | Automatic deploys | Off |
 | Replicas | One |
-| Predeploy command | Empty |
+| `Pre-Deploy Command` | Empty |
 | Initial deploy hook | Empty |
 | App persistent disk | None |
 | PostgreSQL | Major version 18, same region, dedicated database |

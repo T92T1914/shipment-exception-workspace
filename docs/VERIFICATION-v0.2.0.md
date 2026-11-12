@@ -17,8 +17,8 @@ interactive browser profile, screen, clipboard or visible app was used.
 | Evidence | Actual result |
 | --- | --- |
 | TypeScript and Vite | Production build passed with two build threads or fewer |
-| Wheel and source distribution | Built v0.2.0, Python/SQL source identity, bundled frontend, license notices and exact legacy SQL fixture checked |
-| Fresh installed environment | Wheel installed outside the checkout. Import came from that environment's site-packages. Pip check passed |
+| Wheel and source distribution | Built v0.2.0. Python/SQL source identity, bundled frontend, license notices and exact legacy SQL fixture checked |
+| Fresh installed environment | Wheel installed outside the checkout. Import came from that environment's site-packages. The `pip check` command passed |
 | PostgreSQL checks through installed package | 74 passed: 33 retained API checks, 30 intake checks and 11 migration checks |
 | Installed API process restart | Session, assignment receipt and creation receipt survived. Creation replay returned the original 201, ID and one creation event |
 | Built browser journeys | All 14 passed against the installed API and real PostgreSQL |

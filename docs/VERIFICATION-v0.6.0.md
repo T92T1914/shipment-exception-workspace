@@ -22,7 +22,7 @@ browser profile, clipboard, audio or visible application was used.
 | --- | --- |
 | TypeScript/Vite | Production build passed |
 | Wheel/source archive | Built v0.6.0 and checked packaged Python/SQL source identity, built UI, notices and all three immutable migration fixtures |
-| Fresh installation | Imported v0.6.0 from external site-packages on Python 3.13.3. Pip check passed |
+| Fresh installation | Imported v0.6.0 from external site-packages on Python 3.13.3. The `pip check` command passed |
 | Installed PostgreSQL suite | 245 passed in 156.33 seconds, with one retained TestClient deprecation warning |
 | Installed restart consumer | Retained workflow/reviewer/admission checks plus bounded detail, three page history, cursor continuation across API restart and append fencing passed |
 | Built browser journeys | All 29 passed in 44.7 seconds, retaining the prior 25 and adding desktop/narrow history, failure recovery and delayed response cases |

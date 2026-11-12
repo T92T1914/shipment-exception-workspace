@@ -40,7 +40,7 @@ alone does not grant access to `pg_control_system()`. Delegating production
 database privileges is outside this route. Do not grant privileges merely to
 make this fixture pass.
 
-The fixture uses default per database settings. This no create recipe does not
+The fixture uses default per database settings. This recipe does not create the database and does not
 restore database level configuration, cluster configuration, roles or
 tablespaces. If an existing workspace depends on other settings, stop and
 qualify those separately rather than assuming the record comparison covers them.

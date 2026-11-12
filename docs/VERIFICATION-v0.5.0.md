@@ -21,7 +21,7 @@ browser profile, clipboard, audio or visible application was used.
 | --- | --- |
 | TypeScript/Vite | Production build passed |
 | Wheel/source archive | Built v0.5.0. Package source/SQL identity, built UI, notices and all three immutable schema fixtures checked |
-| Fresh installation | Imported v0.5.0 from the external environment's site-packages. Pip check passed |
+| Fresh installation | Imported v0.5.0 from the external environment's site-packages. The `pip check` command passed |
 | Installed PostgreSQL suite | 221 passed in 151.51 seconds, with one retained TestClient deprecation warning |
 | Installed restart consumer | Operator receipt/admission/cursor behavior and reviewer reads/business-write denials passed before and after API restart |
 | Built browser journeys | All 25 passed in 40.0 seconds, including desktop/narrow reviewers, stale access and denied replay after an actual interrupted commit |

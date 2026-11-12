@@ -20,7 +20,7 @@ No screen, interactive browser profile, clipboard, audio or visible app was used
 | --- | --- |
 | TypeScript and Vite | Production build passed |
 | Wheel and source archive | Built v0.3.0. Application/SQL byte identity, frontend, notices and both immutable SQL fixtures checked |
-| Fresh installation | Imported v0.3.0 from the external environment's site-packages. Pip check passed |
+| Fresh installation | Imported v0.3.0 from the external environment's site-packages. The `pip check` command passed |
 | Installed PostgreSQL suite | 131 passed in 87.46 seconds, including retained workflow checks and the new admission/upgrade boundaries |
 | Installed API restart | Real global budget exhaustion survived a fresh API process. A correct password still received 429. Anonymous session and counter rows persisted |
 | Existing authenticated workflow | Assignment and creation receipt replay still worked while further login work was denied |
@@ -54,7 +54,7 @@ It distinguishes a post lock wall clock sample from stale transaction start time
 Threshold/race tests replace only the password verification boundary with a
 narrow call probe. They are not Argon2 load measurements. Retained API tests and
 the installed consumer also execute real password hashing. Trigger failures
-check fail closed admission rollback and retained charging when a later session
+check that admission fails closed, with rollback and retained charging when a later session
 write fails. A missing global state row performs no password verification.
 
 Expiry tests move only disposable database fixture timestamps. Two directly
