@@ -12,6 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import font_manager
 from matplotlib import pyplot as plt
+from matplotlib.backends.backend_agg import RendererAgg
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from fontTools.ttLib import TTFont
 
@@ -49,72 +50,116 @@ def fonts(directory: Path) -> tuple[dict, list]:
     return resolved, records
 
 
+def measure(value: str, face: font_manager.FontProperties, pt: float) -> float:
+    prop = face.copy()
+    prop.set_size(pt)
+    return RendererAgg(8, 8, 100).get_text_width_height_descent(value, prop, False)[0]
+
+
+def wrap(value: str, face: font_manager.FontProperties, pt: float, limit: float) -> list[str]:
+    """Wrap by measured width. A word that cannot fit is an error, never a smaller size."""
+    lines, current = [], ""
+    for word in value.split():
+        trial = f"{current} {word}".strip()
+        if measure(trial, face, pt) <= limit:
+            current = trial
+        elif not current:
+            raise ValueError(f"Word does not fit the layout: {word}")
+        else:
+            lines.append(current)
+            current = word
+    return lines + [current]
+
+
 def render(data: dict, faces: dict, folder: Path, narrow: bool) -> list[Path]:
-    width, height = (960, 1720) if narrow else (1800, 840)
+    """Draw one edition from the Obscur rules in the desk's obscur.md.
+
+    Sizes are points at 100 dpi. Card height comes from measured text plus fixed
+    padding. The wide canvas grows to hold all four 500 px cards.
+    """
     colors = data["obscur"]
-    fig = plt.figure(figsize=(width / 100, height / 100), dpi=100,
-                     facecolor=colors["canvas"])
+    count = len(data["steps"])
+    margin = 48 if narrow else 72
+    card_w, gap = (864, 24) if narrow else (500, 78)
+    width = 960 if narrow else 2 * margin + count * card_w + (count - 1) * gap
+    sizes = ({"subtitle": 33, "card": 34, "body": 33, "footer": 33} if narrow
+             else {"subtitle": 30, "card": 32, "body": 30, "footer": 30})
+    px = lambda pt: pt * 100 / 72
+    drawn = []  # (x, y, line, pt, face, color, bounds)
+
+    def block(x, y, value, pt, face, color, limit, bounds=None, spacing=1.3):
+        for line in wrap(value, faces[face], pt, limit):
+            drawn.append((x, y, line, pt, face, color, bounds))
+            y += px(pt) * spacing
+        return y
+
+    y = margin
+    y = block(margin, y, data["title"], 40, "bold", "text", width - 2 * margin)
+    y = block(margin, y + 14, data["subtitle"], sizes["subtitle"], "regular", "muted",
+              width - 2 * margin) + 48
+    inner = card_w - 56
+    cards = []
+    for step in data["steps"]:
+        height = 32 + sum(px(sizes["card"]) * 1.3 for _ in wrap(step["title"], faces["semibold"], sizes["card"], inner)) + 20
+        for index, line in enumerate(step["lines"]):
+            height += px(sizes["body"]) * 1.3 * len(wrap(line, faces["regular"], sizes["body"], inner))
+            height += 14 if index < len(step["lines"]) - 1 else 0
+        cards.append(height + 32)
+    top, cursor, boxes = y, y, []
+    row = max(cards)
+    for index, step in enumerate(data["steps"]):
+        if narrow:
+            box = (margin, cursor, card_w, cards[index])
+            cursor += cards[index] + gap
+        else:
+            box = (margin + index * (card_w + gap), top, card_w, row)
+        boxes.append(box)
+        x, by, w, h = box
+        ty = block(x + 28, by + 32, step["title"], sizes["card"], "semibold", "text", inner, box) + 20
+        for line in step["lines"]:
+            ty = block(x + 28, ty, line, sizes["body"], "regular", "text", inner, box) + 14
+    y = (cursor - gap if narrow else top + row) + 48
+    y = block(margin, y, data["result"], sizes["card"], "semibold", "text", width - 2 * margin) + 20
+    for line in data["limits"]:
+        y = block(margin, y, line, sizes["body"], "regular", "muted", width - 2 * margin) + 14
+    y = block(margin, y + 34, data["footer"], sizes["footer"], "semibold", "muted", width - 2 * margin)
+    height = int(round(y + 49))
+
+    fig = plt.figure(figsize=(width / 100, height / 100), dpi=100, facecolor=colors["canvas"])
     ax = fig.add_axes((0, 0, 1, 1))
     ax.set(xlim=(0, width), ylim=(height, 0))
     ax.axis("off")
-
-    def text(x, y, value, size=30, face="regular", color="text"):
-        artists = []
-        for line, content in enumerate(value.split("\n")):
-            artists.append(ax.text(x, y + line * size * 1.28, content,
-                                   fontsize=size * .72, fontproperties=faces[face],
-                                   color=colors[color], va="top"))
-        return artists
-
-    text(60, 36, "SHIPMENT EXCEPTION WORKSPACE", 24 if not narrow else 31,
-         "semibold", "accent")
-    text(60, 91, data["title"], 54 if not narrow else 55, "bold")
-    if narrow:
-        text(60, 174, "An authorized operator workflow\nwith synthetic records.", 35,
-             color="muted")
-        boxes = [(60, 280 + i * 270, 840, 245) for i in range(4)]
-        body, title = 40, 45
-    else:
-        text(60, 174, data["subtitle"], 30, color="muted")
-        boxes = [(60 + i * 433, 275, 395, 260) for i in range(4)]
-        body, title = 26, 30
-    bounded = []
-    for index, (step, (x, y, w, h)) in enumerate(zip(data["steps"], boxes)):
-        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=16",
+    for x, by, w, h in boxes:
+        ax.add_patch(FancyBboxPatch((x, by), w, h, boxstyle="round,pad=0,rounding_size=18",
                                    facecolor=colors["panel"], edgecolor=colors["border"],
-                                   linewidth=1.2))
-        labels = text(x + 24, y + 23, step["title"], title, "semibold", "accent")
-        labels += text(x + 24, y + 80, "\n".join(step["lines"]), body)
-        bounded.append((labels, (x, y, w, h)))
-        if index < 3:
-            if narrow:
-                start, end = (width / 2, y + h + 4), (width / 2, y + 264)
-            else:
-                start, end = (x + w + 4, y + h / 2), (x + 427, y + h / 2)
-            ax.add_patch(FancyArrowPatch(start, end, arrowstyle="-|>", mutation_scale=17,
-                                        linewidth=1.5, color=colors["accent"]))
-    y = 1380 if narrow else 595
-    if narrow:
-        text(60, y, "Then resolve at version 4.\nFour events. Retry added none.", 37, "semibold")
-        text(60, y + 118, "Current access remains authoritative.\nRefresh after the historical response.\nNo automatic business POST on recovery.", 31,
-             color="muted")
-        text(60, 1660, "Conceptual example. See the source and limits.", 26, color="muted")
-    else:
-        text(60, y, data["result"], 33, "semibold")
-        text(60, y + 65, "\n".join(data["limits"]), 26, color="muted")
-        text(60, 790, "Conceptual example. Source: docs/DESIGN.md and the installed v0.9.0 walkthrough.", 22,
-             color="muted")
+                                   linewidth=2 * .72))
+    for (x, by, w, h), (nx, ny, nw, nh) in zip(boxes, boxes[1:]):
+        if narrow:
+            start, end = (width / 2, by + h + 3), (width / 2, ny - 3)
+        else:
+            start, end = (x + w + 6, by + h / 2), (nx - 6, by + h / 2)
+        ax.add_patch(FancyArrowPatch(start, end, arrowstyle="-|>,head_length=.45,head_width=.25",
+                                    mutation_scale=20, linewidth=2.5 * .72, color=colors["text"],
+                                    shrinkA=0, shrinkB=0))
+    labels = []
+    for x, ty, line, pt, face, color, bounds in drawn:
+        prop = faces[face].copy()
+        prop.set_size(pt)
+        labels.append((ax.text(x, ty, line, fontproperties=prop, color=colors[color], va="top"), bounds))
     stem = "workflow-obscur-narrow" if narrow else "workflow-obscur-wide"
     fig.canvas.draw()
-    for label in ax.texts:
-        actual = label.get_window_extent(fig.canvas.get_renderer())
-        if actual.x0 < 0 or actual.x1 > width or actual.y0 < 0 or actual.y1 > height:
+    renderer = fig.canvas.get_renderer()
+    for label, bounds in labels:
+        box = label.get_window_extent(renderer).transformed(ax.transData.inverted())
+        if min(box.x0, box.x1) < 12 or max(box.x0, box.x1) > width - 12 \
+                or min(box.y0, box.y1) < 12 or max(box.y0, box.y1) > height - 12:
             raise ValueError(f"Workflow label exceeds the canvas: {label.get_text()}")
-    for labels, (x, y, w, h) in bounded:
-        for label in labels:
-            box = label.get_window_extent(fig.canvas.get_renderer()).transformed(ax.transData.inverted())
-            if box.x0 < x + 8 or box.x1 > x + w - 8 or min(box.y0, box.y1) < y + 8 or max(box.y0, box.y1) > y + h - 8:
-                raise ValueError(f"Workflow label exceeds its card: {label.get_text()}, bounds={box.bounds}, card={(x, y, w, h)}")
+        if bounds:
+            x, by, w, h = bounds
+            if min(box.x0, box.x1) < x + 12 or max(box.x0, box.x1) > x + w - 12 \
+                or min(box.y0, box.y1) < by + 12 or max(box.y0, box.y1) > by + h - 12:
+                raise ValueError(f"Workflow label exceeds its card: {label.get_text()}, "
+                                 f"bounds={box.bounds}, card={bounds}")
     outputs = []
     for extension in ("png", "svg"):
         path = folder / f"{stem}.{extension}"
@@ -122,7 +167,7 @@ def render(data: dict, faces: dict, folder: Path, narrow: bool) -> list[Path]:
             with path.open("wb") as stream:
                 fig.savefig(stream, format="svg", dpi=100, facecolor=colors["canvas"],
                             transparent=False, metadata={"Date": None})
-            path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
+            path.write_bytes(path.read_bytes().replace(bytes([13, 10]), bytes([10])))
         else:
             fig.savefig(path, dpi=100, facecolor=colors["canvas"], transparent=False,
                         metadata={})
