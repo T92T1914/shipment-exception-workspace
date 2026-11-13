@@ -93,7 +93,7 @@ The five new journeys retain the previous 42 and cover:
 - Unchanged actor, organization, session marker and browser document across the
   observed role transition.
 - Retirement of the old intent, a persistent earlier commit warning, available
-  read only search/detail/history/refresh/sign-out, unchanged saved state and
+  read only search, detail, history, refresh and sign out, unchanged saved state and
   exactly one browser business POST.
 - Completed delivery of the held old HTTP 200 before checking that no stale
   success message or detail state returned.

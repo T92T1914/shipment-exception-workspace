@@ -31,7 +31,7 @@ visible application or GPU was used.
 | Ordinary wheel and source payload | Built v0.8.0 and installed it in a fresh external environment. Imports came from site-packages. Package checks include exact bytes for the new guide, tools and guard tests, with the earlier security note check retained. |
 | Initial complete backend suite | 270 passed, one new identity guard case failed, one TestClient deprecation warning. This is a retained failed campaign, not a whole suite pass. |
 | Original installed consumer/UI | Restart, workflow, roles, history, receipts and session consumer passed, followed by all 47 original journeys. Their later applicability is explicitly checked by unchanged runtime/callers and all 16 installed wheel payload members. This is reused execution, not another local browser run. |
-| Corrected affected guard tests | Eight passed. These include parameter only admission cases and actual PostgreSQL same-identity/nonempty checks. No assertion was weakened. |
+| Corrected affected guard tests | Eight passed. These include parameter only admission cases and actual PostgreSQL checks for the same identity and a nonempty value. No assertion was weakened. |
 | Final native route and restored API consumer | Passed at b0d40e76f3fbf99f552e7ca76c282b8095a1b4d7, including complete preapp readback, current authorization, retained receipt replay and a subsequent valid write. |
 | Actual guide recipe | Passed against a separate new target, with complete logical comparison and unchanged source. |
 | Restored installed UI | Two fresh desktop/narrow journeys passed, reading the preserved resolved record and its three history events as operator and reviewer. |

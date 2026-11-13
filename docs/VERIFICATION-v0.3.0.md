@@ -103,7 +103,7 @@ Independent semantic review is an agent review of the supplied composition.
 Code Review exposes CI diagnostics and is used at that capability. Neither is a
 human security audit, penetration test, production assurance or hiring outcome.
 There is no login policy effectiveness study, Python vulnerability audit, load
-qualification, power-loss/failover test or backup restoration acceptance.
+qualification, power loss test, failover test or backup restoration acceptance.
 
 The TestClient path retains Starlette's httpx deprecation warning. Browser output
 retains the NO_COLOR/FORCE_COLOR overlap. They did not fail the executed checks.

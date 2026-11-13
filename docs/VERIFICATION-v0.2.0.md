@@ -50,7 +50,7 @@ Migration tests use the exact v0.1.0 SQL blob from accepted commit
 bytes across checkouts. Legacy records, passwords, session, assignment event
 and original receipt survive the explicit upgrade. The old assignment receipt
 replays through the installed v0.2.0 API. No historical creation events are added.
-Concurrent migrations complete as one upgrade and one current schema no-op.
+Concurrent migrations complete as one upgrade and one current schema that needed no change.
 A late schema version trigger failure rolls back the preceding DDL and data.
 Missing, unknown or partial metadata is refused without relabeling old tables.
 

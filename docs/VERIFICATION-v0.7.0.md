@@ -127,8 +127,8 @@ automatic session GET or POST retry. Focus, visibility and persisted pageshow
 events are dispatched by the tests. They are not actual mobile suspension or
 back/forward-cache restoration trials.
 
-The [desktop session-change](assets/desktop-session-change.png) and
-[390 pixel session-change](assets/narrow-session-change.png) captures were
+The [desktop session change](assets/desktop-session-change.png) and
+[390 pixel session change](assets/narrow-session-change.png) captures were
 generated from the two page journeys and visually inspected. They show synthetic
 Harbor records under Harbor's reviewer identity and the recovery notice. No
 credential, marker, private path, browser chrome or unrelated desktop content is
