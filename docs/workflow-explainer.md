@@ -7,21 +7,21 @@ remain the claim sources.
 
 Creation gives the worked exception version 1. Assigning Sam produces version
 2. A current operator requests Casey assignment with expected version 2.
-The server checks session, role and organization, then commits the version-3
+The server checks session, role and organization, then commits the version 3
 assignment, one history event and the response receipt together. An older
 expected version refuses the business change.
 
 A committed response can be lost. While the original intent is retained and
 still authorized, an explicit retry uses its original key and body. A matching
-receipt returns that version-3 response without another assignment event. A
+receipt returns that version 3 response without another assignment event. A
 separate refresh reads current state. Access and session checks remain
 authoritative, and access recovery never automatically POSTs a business change.
 Retiring a client intent cannot undo a transaction that already committed.
 
 The record is resolved afterward at version 4. It has four events: creation,
 Sam assignment, Casey assignment and resolution. The diagram's flow follows
-the walkthrough's version-3 interrupted assignment and subsequent resolution;
-it does not promise exactly-once effects for arbitrary external systems.
+the walkthrough's version 3 interrupted assignment and subsequent resolution.
+It does not promise exactly once effects for arbitrary external systems.
 
 ## Maintained source
 

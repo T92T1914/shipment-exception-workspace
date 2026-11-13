@@ -1,6 +1,6 @@
 # Shipment native Render deployment
 
-## Upgrade an existing schema-4 demo to v0.9.1
+## Upgrade an existing schema 4 demo to v0.9.1
 
 The current build helper installs the exact v0.9.1 Release wheel. It does not
 build the application from its own checkout. Keep these four identities separate:
@@ -9,26 +9,26 @@ SHA256 `aaf7da963b3237e318d1e376e12f8c58c9e934b7f43880b6037784ca98901df6`,
 the separately reviewed helper checkout, and the provider deployment ID.
 The [Release notes](https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1)
 record actual completion and its evidence. The archive at the unchanged v0.9.1
-tag still contains the historical v0.9.0 helper; use the later reviewed helper
+tag still contains the historical v0.9.0 helper. Use the later reviewed helper
 revision identified by the delivery record.
 
 For the existing demo, preserve its dedicated database, public origin, visitor
 credential, resource plan and startup command. Schema 4 and dependency pins are
 unchanged. Do not run `render_initial_setup.py`, `init`, `migrate`, `seed` or
-`provision-demo` during this upgrade. The retained initial-setup helper belongs
-to the v0.9.0 first-deployment route below.
+`provision-demo` during this upgrade. The retained initial setup helper belongs
+to the v0.9.0 first deployment route below.
 
 1. Record the current successful deployment, helper commit, release digest,
    application source and complete relevant service configuration. Keep secret
    values in the provider's storage. Verify the retained database is compatible
-   and retain a read-only business-state snapshot.
+   and retain a read only business state snapshot.
 2. Download and verify the published wheel. Run the actual helper under CPython
    3.13.3 on Linux in a new directory outside the checkout. The
-   `Qualify published release wheel` workflow separately checks wrong-digest
+   `Qualify published release wheel` workflow separately checks wrong digest
    refusal, installed identity and an ordinary consumer against its own new
    PostgreSQL 18.1 database. This does not qualify native Linux outage handling.
 3. Keep automatic deploys off. Set only `SHIPMENT_RELEASE_SHA256` and
-   `SHIPMENT_SOURCE_REVISION` to the identities above through a save-only route
+   `SHIPMENT_SOURCE_REVISION` to the identities above through a save only route
    that preserves every other variable. A configuration updater may explicitly
    trigger a deploy even when automatic deploys are off. Check its actual behavior.
 4. Deploy the reviewed helper commit explicitly, follow the returned deploy ID
@@ -36,28 +36,28 @@ to the v0.9.0 first-deployment route below.
    version, readiness, reviewer list/detail/history and desktop/narrow journey.
    `/api/version` contains configured metadata and is not independent provenance.
 5. Compare the preserved business state and service configuration. Authentication
-   may create or retire sessions; business records, audit events and receipts
+   may create or retire sessions. Business records, audit events and receipts
    must not be changed by this verification.
 
 Before starting, establish a usable rollback. Render artifact rollback reuses
 the selected prior build and its directly configured environment, start command
 and health path, but does not restore database history or overwrite saved current
-service configuration. Environment-group values and resource plans have separate
+service configuration. Environment group values and resource plans have separate
 behavior. Restore matching saved release settings when needed and verify the
 resulting package identity. Rebuilding the old helper with the retained old wheel
 is a distinct fallback, dependent on those downloads still being available.
 [Render rollback behavior](https://render.com/docs/rollbacks),
-[save-only environment API](https://api-docs.render.com/reference/update-env-vars-for-service),
-[exact-commit deployment](https://render.com/docs/deploys).
+[save only environment API](https://api-docs.render.com/reference/update-env-vars-for-service),
+[exact commit deployment](https://render.com/docs/deploys).
 
 ## Historical v0.9.0 first deployment
 
-The remaining first-deployment recipe uses helpers and environment examples from
+The remaining first deployment recipe uses helpers and environment examples from
 application/helper commit `618aa4f18394064004318ea3619ae2412d609c8c`, available in
 the [v0.9.0 source](https://github.com/T92T1914/shipment-exception-workspace/tree/618aa4f18394064004318ea3619ae2412d609c8c/deploy).
 Do not combine its setup helper with the current v0.9.1 build helper.
 
-The [read-only synthetic demo](https://shipment-employer-demo.onrender.com/) was
+The [read only synthetic demo](https://shipment-employer-demo.onrender.com/) was
 accepted on October 27, 2026. The [hosted record](hosted-demo.md) identifies its
 wheel, source, executed checks and adverse results. Package publication, local
 installed acceptance and hosted acceptance remain separate.
@@ -67,9 +67,9 @@ seed or rerun setup against the existing hosted database.
 
 ## Selected shape
 
-Use one native Python web service and one new dedicated Render PostgreSQL 18 database in the same region. Ohio was used for the accepted route; confirm the chosen account's availability. The installed wheel serves the built React frontend and API at the service's own HTTPS `onrender.com` origin. No Node build, Docker image, custom domain, public tunnel or local-PC exposure is needed for this route.
+Use one native Python web service and one new dedicated Render PostgreSQL 18 database in the same region. Ohio was used for the accepted route. Confirm the chosen account's availability. The installed wheel serves the built React frontend and API at the service's own HTTPS `onrender.com` origin. No Node build, Docker image, custom domain, public tunnel or local PC exposure is needed for this route.
 
-The source checkout supplies these two reviewed helpers and the unchanged dependency lock. The build installs the exact reviewed public v0.9.0 wheel instead of building the application from that checkout. Record the application commit, deployment-helper checkout commit and wheel digest separately when they differ.
+The source checkout supplies these two reviewed helpers and the unchanged dependency lock. The build installs the exact reviewed public v0.9.0 wheel instead of building the application from that checkout. Record the application commit, deployment helper checkout commit and wheel digest separately when they differ.
 
 Render supports selecting a released Python patch version through `PYTHON_VERSION`. Pin `3.13.3`, matching the application qualification. [Python selection](https://render.com/docs/python-version).
 
@@ -79,44 +79,44 @@ The accepted configuration uses paid web compute `0.5c-512mb` and PostgreSQL
 compute `0.1c-256mb`, with one service instance, 1 GB database storage and storage
 autoscaling disabled. The October 27 account draft showed $7/month web, $6/month
 database compute and $0.30/month storage: a $13.30/month baseline before the
-one-off job, usage overages and applicable tax. The actual paid storage quote
-superseded an earlier public-page interpretation of included storage. Obtain a
+one off job, usage overages and applicable tax. The actual paid storage quote
+superseded an earlier public page interpretation of included storage. Obtain a
 fresh account quote and explicit resource/cost approval for another deployment.
 This is not a total hard cap. [Pricing](https://render.com/pricing),
 [current compute names](https://render.com/docs/compute-plans).
 
-A free preview is a different finite choice: web sleep after 15 idle minutes, roughly one-minute wake, 750 workspace free hours monthly, and a 1 GB database expiring after 30 days. The upgrade grace period is another 14 days before deletion. It does not provide durable ongoing demo storage or free backups. Do not create keep-alive traffic to evade sleeping. [Free limits](https://render.com/docs/free).
+A free preview is a different finite choice: web sleep after 15 idle minutes, roughly one minute wake, 750 workspace free hours monthly, and a 1 GB database expiring after 30 days. The upgrade grace period is another 14 days before deletion. It does not provide durable ongoing demo storage or free backups. Do not create keep-alive traffic to evade sleeping. [Free limits](https://render.com/docs/free).
 
-Free web services cannot run one-off jobs. The selected explicit setup route
+Free web services cannot run one off jobs. The selected explicit setup route
 therefore requires paid web compute, even if the database is a finite free
 preview. A fully free web/database option would need a separately reviewed safe
 bootstrap route and is not supplied by this candidate. Do not silently move
 initialization into startup to work around that restriction.
 [Free service restrictions](https://render.com/docs/free#other-limitations).
 
-The initial setup job is separately billed at its compute plan's per-second rate.
+The initial setup job is separately billed at its compute plan's per second rate.
 Confirm the job quote and account permissions before creation.
-[One-off job behavior and billing](https://render.com/docs/one-off-jobs).
+[One off job behavior and billing](https://render.com/docs/one-off-jobs).
 
-Required scoped authority is permission to create this web service and this dedicated database in the selected workspace, set their service-scoped environment variables, run one initial setup job, deploy the selected commit, read status/logs and perform one restart acceptance check. Account creation, broad GitHub installation access, payment changes, paid resources or expanded permissions require the corresponding decision. Use an existing appropriate account if one is available. No unrelated services should be inspected or modified.
+Required scoped authority is permission to create this web service and this dedicated database in the selected workspace, set their service scoped environment variables, run one initial setup job, deploy the selected commit, read status/logs and perform one restart acceptance check. Account creation, broad GitHub installation access, payment changes, paid resources or expanded permissions require the corresponding decision. Use an existing appropriate account if one is available. No unrelated services should be inspected or modified.
 
 ## Fill the exact inputs
 
 `environment.example` lists the required values without real secrets. Before any provider build:
 
 1. Publish and independently download the accepted `shipment_exception_workspace-0.9.0-py3-none-any.whl` from the repository's v0.9.0 GitHub Release. Record its final SHA256. Set `SHIPMENT_RELEASE_SHA256` to that digest, not to a guessed or earlier build's hash.
-2. Set `SHIPMENT_SOURCE_REVISION` to the exact accepted application commit associated with those bytes. The build receipt also records Render's helper-checkout commit. A configured revision string is not independent proof of source provenance.
-3. Use the service's actually assigned HTTPS origin for `SHIPMENT_PUBLIC_ORIGIN`, without a trailing slash or explicit default port. It must also match the HTTP health-check Host.
+2. Set `SHIPMENT_SOURCE_REVISION` to the exact accepted application commit associated with those bytes. The build receipt also records Render's helper checkout commit. A configured revision string is not independent proof of source provenance.
+3. Use the service's actually assigned HTTPS origin for `SHIPMENT_PUBLIC_ORIGIN`, without a trailing slash or explicit default port. It must also match the HTTP health check Host.
 4. Set a separate deliberately public reviewer password of 12 through 256 characters. Public access is `visitor@northline.example`. Never publish the stock seed password or a database/account secret.
-5. Put the database URL in the service's secret environment settings. Use the dedicated same-region internal endpoint and append `?sslmode=require`. Do not print, put in Git or attach this URL. Block external database connections for this route.
+5. Put the database URL in the service's secret environment settings. Use the dedicated same region internal endpoint and append `?sslmode=require`. Do not print, put in Git or attach this URL. Block external database connections for this route.
 
-Render internal PostgreSQL TLS uses a self-signed certificate. `require` prevents plaintext fallback but does not establish certificate/hostname verification. Internal `verify-ca` and `verify-full` are unsupported. This is a declared provider trust boundary, not a general encrypted-database compatibility claim. [Connection documentation](https://render.com/docs/postgresql-creating-connecting).
+Render internal PostgreSQL TLS uses a self signed certificate. `require` prevents plaintext fallback but does not establish certificate/hostname verification. Internal `verify-ca` and `verify-full` are unsupported. This is a declared provider trust boundary, not a general encrypted database compatibility claim. [Connection documentation](https://render.com/docs/postgresql-creating-connecting).
 
-The helper checks the lock's LF-normalized SHA256, `f56bdd4266247a765c201073c2dd94f8356550429c4fac563b3c747dd6643434`. It creates a named `.shipment-runtime` environment without automatic pip bootstrap, then runs `ensurepip` under a deliberately filtered child environment. Database credentials and the published password are excluded from bootstrap and installation children. It installs the pinned dependencies from PyPI as wheels only and installs the verified application wheel with `--no-deps`. It does not change the provider's global Python environment or contact PostgreSQL.
+The helper checks the lock's LF normalized SHA256, `f56bdd4266247a765c201073c2dd94f8356550429c4fac563b3c747dd6643434`. It creates a named `.shipment-runtime` environment without automatic pip bootstrap, then runs `ensurepip` under a deliberately filtered child environment. Database credentials and the published password are excluded from bootstrap and installation children. It installs the pinned dependencies from PyPI as wheels only and installs the verified application wheel with `--no-deps`. It does not change the provider's global Python environment or contact PostgreSQL.
 
 ## Service configuration
 
-Review the helpers under `deploy/` and configure these exact commands in the selected deployment checkout. Final application revision and wheel SHA256 remain required operator-filled inputs. No candidate commit is silently promoted to the release identity.
+Review the helpers under `deploy/` and configure these exact commands in the selected deployment checkout. Final application revision and wheel SHA256 remain required operator filled inputs. No candidate commit is silently promoted to the release identity.
 
 | Field | Candidate value |
 | --- | --- |
@@ -126,8 +126,8 @@ Review the helpers under `deploy/` and configure these exact commands in the sel
 | Health check | `/api/ready` |
 | Automatic deploys | Off |
 | Replicas | One |
-| Pre-deploy command | Empty |
-| Initial-deploy hook | Empty |
+| `Pre-Deploy Command` | Empty |
+| Initial deploy hook | Empty |
 | App persistent disk | None |
 | PostgreSQL | Major version 18, same region, dedicated database |
 | Database external IP access | Empty allowlist |
@@ -153,7 +153,7 @@ database, reports `application_ready: false`, returns 200 only for
 handler. Set the temporary health path to `/bootstrap-ready` and the start command
 to the following POSIX command. Leave automatic deployment off and pre-deploy/setup
 hooks empty. This exact listener was checked locally and over the provider HTTPS
-route. It is a short-lived bootstrap, not an alternative application or an
+route. It is a short lived bootstrap, not an alternative application or an
 availability/security qualification.
 
 ```sh
@@ -189,8 +189,8 @@ response. Then create one explicit setup job with this override:
 The job uses the successful base deployment's build artifact and configured
 environment snapshot. The accepted job used `plan-srv-006`, finished successfully,
 and was not rerun. Record the actual job identity/status and inspect logs.
-The five-minute operational cancellation threshold used here was not a
-provider-enforced time or billing cap. [Build snapshot and job status](https://render.com/docs/one-off-jobs).
+The five minute operational cancellation threshold used here was not a
+provider enforced time or billing cap. [Build snapshot and job status](https://render.com/docs/one-off-jobs).
 
 After successful setup, restore the exact normal `serve-demo` command and
 `/api/ready`, then deploy the same reviewed application bytes. Confirm both
@@ -203,40 +203,40 @@ If setup fails or its result is uncertain, retain the database and logs and insp
 
 After setup, save the normal start command and `/api/ready`, then deploy the same
 reviewed application bytes. A restart preserves the currently deployed
-configuration and does not apply newly saved start/health settings; reserve it
+configuration and does not apply newly saved start/health settings. Reserve it
 for an already deployed normal application. No permanent setup command should be
-enabled. A paid pre-deploy command is an alternative only if separately reviewed
+enabled. A paid predeploy command is an alternative only if separately reviewed
 and manually removed after the one initial successful setup. It is not selected
-here. An after-first-successful-deploy hook cannot solve a startup prerequisite
+here. An after first successful deploy hook cannot solve a startup prerequisite
 that prevents the first healthy deploy.
 
 ## Actual acceptance after deployment
 
 Record the provider resource/deployment IDs privately and verify the actual public HTTPS origin, `/api/version` and `/api/ready`. Join that readback with the accepted wheel SHA256, build receipt and provider checkout/build identity. Do not treat a URL being assigned as proof that it serves this version.
 
-Use the actual public visitor credential for browser and direct API checks. Verify queue search, open/resolved filters, detail/history, reload, keyboard navigation, sign-out and session recovery at desktop and narrow sizes. Include light/dark and enlarged text. `NL-1086` contains provisioned resolved history and `NL-1091` an assigned open record. These initial fixtures do not prove an operator API journey.
+Use the actual public visitor credential for browser and direct API checks. Verify queue search, open/resolved filters, detail/history, reload, keyboard navigation, sign out and session recovery at desktop and narrow sizes. Include light/dark and enlarged text. `NL-1086` contains provisioned resolved history and `NL-1091` an assigned open record. These initial fixtures do not prove an operator API journey.
 
-Verify business create/assign/unassign/resolve and saved-receipt replay remain denied, guessed Harbor record references remain unavailable, CSRF/origin and Host checks hold, and no public password works for an operator. Keep deliberate error injection and database expiry fixtures confined to disposable staging. On the public instance, use harmless denied requests and normal visitor behavior within the owner-authorized acceptance scope.
+Verify business create/assign/unassign/resolve and saved receipt replay remain denied, guessed Harbor record references remain unavailable, CSRF/origin and Host checks hold, and no public password works for an operator. Keep deliberate error injection and database expiry fixtures confined to disposable staging. On the public instance, use harmless denied requests and normal visitor behavior within the owner authorized acceptance scope.
 
-Read cookie flags on the actual HTTPS response. Check that HTTP is redirected by the provider before application interaction, and slash/missing API paths do not downgrade to HTTP. The app ignores forwarded headers rather than trusting a client-supplied proxy identity.
+Read cookie flags on the actual HTTPS response. Check that HTTP is redirected by the provider before application interaction, and slash/missing API paths do not downgrade to HTTP. The app ignores forwarded headers rather than trusting a client supplied proxy identity.
 
-Record the complete admitted API-visible queue/detail/history values, exercise
+Record the complete admitted API visible queue/detail/history values, exercise
 the approved provider restart, then verify those values and an unexpired visitor
 session still behave correctly. The CLI restart used here emits a
 `server_restarted` event and replaces a service instance without adding a new
 deployment entry. Combine pre/post instance identities, actual HTTPS readiness,
 unchanged deployed commit and session/business readback. An instance list alone
-is not a health result. Startup must not create/reset data. Record observed PostgreSQL/Python versions. Managed PostgreSQL 18 is a new hosted application route and does not inherit native restore or cross-version qualification.
+is not a health result. Startup must not create/reset data. Record observed PostgreSQL/Python versions. Managed PostgreSQL 18 is a new hosted application route and does not inherit native restore or cross version qualification.
 
 ## Resource, retention and shutdown policy
 
-The application uses one Uvicorn worker, eight concurrent requests and two application thread tokens. Public API admission is five requests/second with burst thirty per process. Sessions have a transactionally enforced cap of 128 live rows, with five-minute anonymous and thirty-minute authenticated lifetimes. Existing durable password admission is separate. These controls do not establish attack resistance, constant physical database size or a response-time guarantee.
+The application uses one Uvicorn worker, eight concurrent requests and two application thread tokens. Public API admission is five requests/second with burst thirty per process. Sessions have a transactionally enforced cap of 128 live rows, with five minute anonymous and thirty minute authenticated lifetimes. Existing durable password admission is separate. These controls do not establish attack resistance, constant physical database size or a response time guarantee.
 
-Only fictional records and identities belong here. Business records are read-only to public visitors. Sessions and login-admission state still change. Do not invite employers to submit personal or real logistics data. Keep connection URLs, database passwords, provider tokens, cookies and raw logs out of public assets. Before creating resources, inspect the selected workspace's log retention, billing limits, egress allowance and database retention policies. Record their actual values without changing account-wide settings as a convenience.
+Only fictional records and identities belong here. Business records are read only to public visitors. Sessions and login admission state still change. Do not invite employers to submit personal or real logistics data. Keep connection URLs, database passwords, provider tokens, cookies and raw logs out of public assets. Before creating resources, inspect the selected workspace's log retention, billing limits, egress allowance and database retention policies. Record their actual values without changing account wide settings as a convenience.
 
-Suspending the selected web service stops public access but does not by itself prove that database charges stop. Preserve the synthetic database and secrets until T explicitly chooses deletion or retention. Check the provider's actual billable-resource state. Never delete unrelated resources or assume an expired free database can be recovered.
+Suspending the selected web service stops public access but does not by itself prove that database charges stop. Preserve the synthetic database and secrets until T explicitly chooses deletion or retention. Check the provider's actual billable resource state. Never delete unrelated resources or assume an expired free database can be recovered.
 
-Confirm the initial job has exited. If it is still running after a failure, cancel only that recorded job and read back its terminal status. Suspending or redeploying the base web service does not cancel a running one-off job. The helper's subprocess timeouts are not a substitute for that provider readback.
+Confirm the initial job has exited. If it is still running after a failure, cancel only that recorded job and read back its terminal status. Suspending or redeploying the base web service does not cancel a running one off job. The helper's subprocess timeouts are not a substitute for that provider readback.
 
 For a later redeploy, retain the existing database, use a separately accepted matching wheel digest and application revision, and repeat affected installed/hosted checks. Keep automatic deployment off and leave setup hooks empty. An app rollback does not undo database changes and must not be presented as a backup/restore procedure.
 
