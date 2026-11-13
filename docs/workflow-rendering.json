@@ -2,8 +2,8 @@
   "kind": "conceptual workflow, not a new application execution",
   "theme_source": {
     "repository": "T92T1914/clair-obscur-themes",
-    "revision": "7a57fe750ff50205a17e1d342106a0d3f2777159",
-    "file": "tokens.json"
+    "revision": "4693831b51f2b3fa268d830fd9b977fb70c83e3d",
+    "file": "tokens-monochrome.json"
   },
   "renderer": {
     "matplotlib": "3.11.1",
@@ -33,13 +33,13 @@
     }
   ],
   "inputs": {
-    "tools/render_workflow_explainer.py": "0321cb8f927137997ddc7885fef59ce5a705df627dac17183f0cc9e9773cf0b8",
-    "docs/workflow-explainer.json": "928afe09cdd98db1488ea33ac578a6e73e682b3ae0d09d1c828ddff03b6b65d4"
+    "tools/render_workflow_explainer.py": "f805bd62111ae04ee878b1a3ed997f8013a1a507a093310a9ebdef2cf6f67963",
+    "docs/workflow-explainer.json": "80c6de634c4381f10f806279da602b8ad6d0a26547c7978199722650e0330459"
   },
   "outputs": {
-    "docs/assets/workflow-obscur-wide.png": "f67fc48cd14e607ed5d927ac51f1f18088ec2b9ec344d1c50494d8a128bae767",
-    "docs/assets/workflow-obscur-wide.svg": "e5c37367a1f64fa84d30a6d7365df1708ff86955a6a72fcab02f3fe1e6724375",
-    "docs/assets/workflow-obscur-narrow.png": "a62844ec455db7e685df1236721498da8d825686be8087a54d2b309c4b64642d",
-    "docs/assets/workflow-obscur-narrow.svg": "5940b78b67e8229fb9c807f8630fa7d6a361b5c88d15d089dd9d2f4d41cbb851"
+    "docs/assets/workflow-obscur-wide.png": "14a3c68cef177dd9ee598fce89d83be601d76813ae5c7e1a90bb42becf46dc16",
+    "docs/assets/workflow-obscur-wide.svg": "e1197bb771cb3aaa2f6fc98cc3ad79f07d96b766db64198bb2effa00b0dbf96d",
+    "docs/assets/workflow-obscur-narrow.png": "41f205dac3afc6d62d3332113baae6e93b6bc23994182e920e9d7c46546c6c76",
+    "docs/assets/workflow-obscur-narrow.svg": "60dece1943718f0628a81dab3e791312892b86f357f3781031190a078e74e6b9"
   }
 }

@@ -29,14 +29,14 @@
   <p class="eyebrow">Static project explainer</p>
   <h1>Change a shipment record without losing its history.</h1>
   <p class="lead">Shipment Exception Workspace is a small React, Python and PostgreSQL application for creating, finding, assigning and resolving synthetic exceptions. Its useful question is what happens when two edits compete or a committed response disappears.</p>
-  <p>This static page explains the project. The separate <a href="https://shipment-employer-demo.onrender.com/">hosted synthetic demo</a> lets visitors browse records and history as a read-only reviewer. Choose <strong>Enter synthetic demo</strong>; do not enter real shipment or personal data. The installable application and operator walkthrough remain available below.</p>
+  <p>This static page explains the project. The separate <a href="https://shipment-employer-demo.onrender.com/">hosted synthetic demo</a> lets visitors browse records and history as a read only reviewer. Choose "Enter synthetic demo". Do not enter real shipment or personal data. The installable application and operator walkthrough remain available below.</p>
   <section id="workflow" aria-labelledby="workflow-title">
     <h2 id="workflow-title">One change. A durable history.</h2>
     <figure>
       <a href="workflow-obscur-wide.svg">
         <picture>
           <source media="(max-width:700px)" srcset="workflow-obscur-narrow.png">
-          <img src="workflow-obscur-wide.png" width="1800" height="840" alt="Synthetic intake creates version 1 and Sam assignment reaches version 2. Casey assignment commits version 3, one history event and a saved receipt together. A matching authorized retry adds no event. Resolution later reaches version 4.">
+          <img src="workflow-obscur-wide.png" width="2378" height="1226" alt="Synthetic intake creates version 1 and Sam assignment reaches version 2. Casey assignment commits version 3, one history event and a saved receipt together. A matching authorized retry adds no event. Resolution later reaches version 4.">
         </picture>
       </a>
       <figcaption>Conceptual workflow based on the <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/DESIGN.md">implemented transaction and access design</a> and the installed walkthrough. It is not a new application run or a performance measurement. <a href="workflow-obscur-narrow.svg">Open the narrow SVG</a> or <a href="workflow-rendering.json">inspect the source/font/output record</a>.</figcaption>
@@ -46,24 +46,24 @@
   <section id="example" class="panel" aria-labelledby="example-title">
     <h2 id="example-title">A response can be lost after the change commits.</h2>
     <ol>
-      <li>Create a synthetic receiving-appointment exception at version 1.</li>
+      <li>Create a synthetic receiving appointment exception at version 1.</li>
       <li>Assign Sam, reaching version 2. A competing edit that still expects version 1 is refused.</li>
       <li>Assign Casey with the current version. The server commits version 3, but the test deliberately interrupts its response.</li>
       <li>Explicitly retry the retained same intent with its original key and body. Current access still has to be valid. The saved response returns without another assignment event.</li>
       <li>Resolve the record, reaching version 4. Its four events remain visible after reload.</li>
     </ol>
-    <p>A receipt response is historical. A separate current-state refresh reads any later changes. Session or access recovery does not automatically POST a business change, and retiring an uncertain client request cannot undo a commit.</p>
+    <p>A receipt response is historical. A separate current state refresh reads any later changes. Session or access recovery does not automatically POST a business change, and retiring an uncertain client request cannot undo a commit.</p>
     <p><a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/operator-walkthrough.md">Inspect the executed operator walkthrough and capture identity</a>.</p>
     <figure class="capture">
-      <a href="operator-05-narrow-resolved.png"><img src="operator-05-narrow-resolved.png" width="390" height="1792" loading="lazy" alt="Genuine dark capture of the installed v0.9.0 operator walkthrough, showing the resolved version-4 synthetic record and four history events."></a>
+      <a href="operator-05-narrow-resolved.png"><img src="operator-05-narrow-resolved.png" width="390" height="1792" loading="lazy" alt="Genuine dark capture of the installed v0.9.0 operator walkthrough, showing the resolved version 4 synthetic record and four history events."></a>
       <figcaption>Original accepted dark capture from the ordinary installed v0.9.0 candidate, preserved without recoloring. Its <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/67d10a531371b1f37b8dfbb7d4ed4fa5bdd3093c/docs/operator-walkthrough.md#capture-identity-and-limits">source, wheel and execution limits</a> remain separate from later source revisions and public hosting.</figcaption>
     </figure>
   </section>
   <section id="run" aria-labelledby="run-title">
     <h2 id="run-title">Inspect the code or install the application.</h2>
-    <p>The v0.9.1 wheel contains the Python application and built frontend. The local route uses a separate PostgreSQL database. First-time initialization and synthetic fixtures are explicit local operations. An existing schema-4 workspace needs no migration or reseeding. Release notes distinguish download acceptance from the hosted demo's actual deployed version.</p>
+    <p>The v0.9.1 wheel contains the Python application and built frontend. The local route uses a separate PostgreSQL database. First time initialization and synthetic fixtures are explicit local operations. An existing schema 4 workspace needs no migration or reseeding. Release notes distinguish download acceptance from the hosted demo's actual deployed version.</p>
     <div class="links">
-      <a href="https://shipment-employer-demo.onrender.com/">Open read-only demo</a>
+      <a href="https://shipment-employer-demo.onrender.com/">Open read only demo</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/main/docs/hosted-demo.md">Hosted acceptance and limits</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/releases/tag/v0.9.1">Download v0.9.1</a>
       <a href="https://github.com/T92T1914/shipment-exception-workspace/releases/download/v0.9.1/INSTALL-v0.9.1.md">v0.9.1 installation guide</a>
@@ -73,14 +73,14 @@
   </section>
   <section id="limits" class="panel" aria-labelledby="limits-title">
     <h2 id="limits-title">What the result establishes.</h2>
-    <p>The project demonstrates organization-scoped access, operator/reviewer roles, version conflicts, atomic history and receipts, and explicit recovery through an installed synthetic consumer. Tests and captures have their own recorded source and environment identities.</p>
-    <p>It has no carrier integration, operational users or production qualification. The separate hosted reviewer passed bounded HTTPS, server-denial, desktop/narrow and instance-restart checks on October 27, 2026. Its history is provisioned synthetic fixture data. At 390 pixels with doubled root text, content reflows but headings can wrap awkwardly and the page becomes long. These checks are not comprehensive accessibility or security acceptance. GitHub Pages hosts this explanation; Render hosts the separate application and database.</p>
-    <p>The earlier Windows/PostgreSQL 18.1 <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/b2ff568e49ef037a7a585f0ee39be79a11d81f6f/docs/backup-and-restore.md">trusted local backup/restore result</a> keeps its v0.8.0 basis. It is not production disaster-recovery qualification.</p>
+    <p>The project demonstrates organization scoped access, operator/reviewer roles, version conflicts, atomic history and receipts, and explicit recovery through an installed synthetic consumer. Tests and captures have their own recorded source and environment identities.</p>
+    <p>It has no carrier integration, operational users or production qualification. The separate hosted reviewer passed bounded HTTPS, server denial, desktop/narrow and instance restart checks on October 27, 2026. Its history is provisioned synthetic fixture data. At 390 pixels with doubled root text, content reflows but headings can wrap awkwardly and the page becomes long. These checks are not comprehensive accessibility or security acceptance. GitHub Pages hosts this explanation. Render hosts the separate application and database.</p>
+    <p>The earlier Windows/PostgreSQL 18.1 <a href="https://github.com/T92T1914/shipment-exception-workspace/blob/b2ff568e49ef037a7a585f0ee39be79a11d81f6f/docs/backup-and-restore.md">trusted local backup/restore result</a> keeps its v0.8.0 basis. It is not production disaster recovery qualification.</p>
   </section>
 </main>
 <footer>
   <p><a href="https://github.com/T92T1914">Return to the portfolio</a> · <a href="build-info.json">Published source and asset identity</a></p>
-  <p>Obscur is the first-visit and no-JavaScript baseline. A saved explicit appearance takes priority. Text uses local Inter when available and a system sans-serif fallback otherwise; no font binary is downloaded by this page. The infographic's recorded Inter glyphs are part of its generated exports.</p>
+  <p>Obscur is the first visit and no JavaScript baseline. A saved explicit appearance takes priority. Text uses local Inter when available and a system sans serif fallback otherwise. No font binary is downloaded by this page. The infographic's recorded Inter glyphs are part of its generated exports.</p>
 </footer>
 </body>
 </html>
