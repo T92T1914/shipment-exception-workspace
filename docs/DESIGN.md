@@ -521,10 +521,22 @@ rolls back.
 Lock order is the same everywhere: the actor row, then the receipt key, then
 the exception row. In the public demo, login takes the session lock before it
 touches any session row. Logout deletes only its own row in a single statement and never waits on
-the session lock, so it cannot close a cycle with admission. The receipt and
-reference races in `test_api.py` and `test_intake.py` start both requests at a
-barrier, so they do not prove the requests overlapped. The unique indexes decide
-those races whatever the timing.
+the session lock, so it cannot close a cycle with admission.
+
+The receipt and reference races are staged the same way. One operator's
+creation sent twice with one retry key, from two sessions, makes the second
+request wait on the first one's reserved key, and the second then replays the
+saved 201. Two operators creating one new reference both wait on a held insert
+of it, and the loser saves a 409 `reference_conflict`. Without
+`ON CONFLICT ... DO NOTHING`, the loser of either race fails on the unique index
+with a 500 and saves no receipt. A last test puts the receipt lookup inside the
+insert statement, as one statement with a data modifying `WITH`. Its conflict
+check waits just as the application's insert does, then skips the insert
+because the other transaction committed. The lookup in that same statement
+still reads the snapshot taken before that commit, so it finds no receipt. That
+is why `reserve` reads the receipt in a separate statement. The duplicate
+request race for assignment in `test_api.py` still starts at a barrier, and it
+runs through the same `reserve` code.
 
 ## Browser recovery
 
