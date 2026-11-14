@@ -6,11 +6,14 @@ reports each request blocked before the holder lets go. The requests reach
 their locks in the same order on every run, and no sleep stands in for
 evidence.
 
-Each lock test also runs with that lock removed. The removal rewrites one
-application statement as it reaches PostgreSQL and changes nothing else, and
-that variant asserts the anomaly the lock prevents. A race test that still
-passed with its lock gone would prove nothing, so the removed variant shows that
-each test depends on the lock it names. The account per route is in
+Each race also runs with its guard removed, either a locking clause or an
+ON CONFLICT clause. The removal rewrites one application statement as it
+reaches PostgreSQL and changes nothing else, and that variant asserts the
+anomaly the guard prevents. A race test that still passed with its guard gone
+would prove nothing, so the removed variant shows that each test depends on the
+guard it names. Two tests have no removed run. Logout holds no lock, so its
+test pins a stated limit, and one test checks PostgreSQL itself to show why
+the receipt lookup is a separate statement. The account per route is in
 docs/DESIGN.md under Write route isolation.
 """
 
@@ -37,28 +40,34 @@ NORTHLINE = UUID(int=1)
 ALEX, CASEY = UUID(int=11), UUID(int=13)
 ITEM = UUID(int=101)
 
-# Each entry is the exact application statement and the clause the removed
-# variant takes out of it.
+# Each entry is the text that identifies one application statement and the
+# clause the removed variant takes out of it.
 EXCEPTION_ROW_LOCK = ("SELECT * FROM shipment_exceptions WHERE organization_id=%s AND id=%s FOR UPDATE", " FOR UPDATE")
 ACTOR_ROW_LOCK = ("SELECT organization_id,role FROM users WHERE id=%s FOR SHARE", " FOR SHARE")
 LOGIN_BUDGET_LOCK = ("SELECT attempts,reset_at FROM login_global WHERE singleton=true FOR UPDATE", " FOR UPDATE")
 SESSION_ORDER_LOCK = ("SELECT pg_advisory_xact_lock(%s,%s)", "pg_advisory_xact_lock(%s,%s)")
+RECEIPT_CONFLICT = ("INSERT INTO mutation_requests(organization_id,actor_id,key,fingerprint)", " ON CONFLICT DO NOTHING")
+REFERENCE_CONFLICT = ("INSERT INTO shipment_exceptions(id,organization_id,reference,summary,details,priority)",
+                      " ON CONFLICT (organization_id,reference) DO NOTHING")
 
 LOCK = pytest.mark.parametrize("lock", ["kept", "removed"], ids=["lock-kept", "lock-removed"])
+GUARD = pytest.mark.parametrize("guard", ["kept", "removed"], ids=["guard-kept", "guard-removed"])
 
 
 def watch_statements(monkeypatch, lock, statement=None, replacement="", caller=None):
-    """Record database errors and, for the removed variant, take one lock out.
+    """Record database errors and, for the removed variant, take one guard out.
 
-    The statement must match exactly, so the holder and observer connections
-    are never rewritten. A caller name narrows the rewrite further when two
-    functions send the same text.
+    A query is rewritten only when it contains both the identifying text and
+    the clause, and, when a caller is named, only when that function sent it.
+    No holder or observer statement contains an identifying text together with
+    its clause unless the test also names a caller.
     """
     original = psycopg.Connection.execute
     record = {"removed": 0, "errors": []}
 
     def execute(conn, query, *args, **kwargs):
-        if (lock == "removed" and statement and query == statement[0]
+        if (lock == "removed" and statement and isinstance(query, str)
+                and statement[0] in query and statement[1] in query
                 and (caller is None or sys._getframe(1).f_code.co_name == caller)):
             query = query.replace(statement[1], replacement)
             record["removed"] += 1
@@ -110,6 +119,22 @@ def workflow(database):
 def change(client, headers, action, body):
     return client.post(f"/api/exceptions/{ITEM}/{action}", json=body,
                        headers={**headers, "Idempotency-Key": str(uuid4())})
+
+
+def create_body(reference):
+    return {"reference": reference, "summary": "Staged creation race",
+            "details": "A synthetic creation that waits behind a held reference.", "priority": "normal"}
+
+
+def post_creation(client, headers, body, key):
+    return client.post("/api/exceptions", json=body, headers={**headers, "Idempotency-Key": key})
+
+
+def hold_reference(holder, reference):
+    """Insert the reference without committing, so a creation of it waits on this transaction."""
+    holder.execute("""INSERT INTO shipment_exceptions(id,organization_id,reference,summary,details,priority)
+        VALUES (%s,%s,%s,'Held by the test','Uncommitted row that holds the reference.','normal')""",
+                   (uuid4(), NORTHLINE, reference))
 
 
 def assert_unconfirmed(response):
@@ -228,27 +253,20 @@ def test_create_actor_lock_holds_a_demotion_until_the_admitted_creation_commits(
     after the change that should have stopped it.
     """
     reference = "ISO-CREATE"
-    body = {"reference": reference, "summary": "Held reference race",
-            "details": "A synthetic creation that waits behind a held reference.", "priority": "normal"}
 
     def demote():
         with psycopg.connect(database, options="-c lock_timeout=5000") as conn:
             conn.execute("UPDATE users SET role='reviewer' WHERE id=%s", (ALEX,))
         return True
 
-    def create(client, headers):
-        return client.post("/api/exceptions", json=body, headers={**headers, "Idempotency-Key": str(uuid4())})
-
     with authenticated_client(app) as (client, headers):
         record = watch_statements(monkeypatch, lock, ACTOR_ROW_LOCK)
         with psycopg.connect(database) as holder, psycopg.connect(
             database, autocommit=True, row_factory=dict_row
         ) as observer, ThreadPoolExecutor(max_workers=2) as pool:
-            holder.execute("""INSERT INTO shipment_exceptions(id,organization_id,reference,summary,details,priority)
-                VALUES (%s,%s,%s,'Held by the test','Uncommitted row that holds the reference.','normal')""",
-                           (uuid4(), NORTHLINE, reference))
+            hold_reference(holder, reference)
             try:
-                creation = pool.submit(create, client, headers)
+                creation = pool.submit(post_creation, client, headers, create_body(reference), str(uuid4()))
                 creation_pid = wait_until_blocked(observer, creation, [holder.info.backend_pid])
                 demotion = pool.submit(demote)
                 if lock == "kept":
@@ -273,6 +291,147 @@ def test_create_actor_lock_holds_a_demotion_until_the_admitted_creation_commits(
     assert event == {"actor_id": ALEX, "action": "created"}
     assert record["errors"] == []
     assert record["removed"] == (1 if lock == "removed" else 0)
+
+
+@GUARD
+def test_same_key_retry_waits_for_the_first_request_and_replays_its_receipt(app, database, monkeypatch, guard):
+    """One operator's creation arrives twice with one retry key, from two sessions.
+
+    The first request reserves the key and then waits behind a held reference.
+    The second waits on the first one's uncommitted key. When the first
+    commits, the second finds no new reservation, reads the receipt in a fresh
+    statement and replays the saved 201. Without ON CONFLICT DO NOTHING on the
+    receipt, the second fails on the duplicate key with a 500, and the client's
+    retry gets nothing it can use.
+    """
+    reference, key = "ISO-RETRY", str(uuid4())
+    with authenticated_client(app) as (first_client, first_headers), authenticated_client(
+        app
+    ) as (second_client, second_headers):
+        before = workflow(database)
+        record = watch_statements(monkeypatch, guard, RECEIPT_CONFLICT, caller="reserve")
+        with psycopg.connect(database) as holder, psycopg.connect(
+            database, autocommit=True, row_factory=dict_row
+        ) as observer, ThreadPoolExecutor(max_workers=2) as pool:
+            hold_reference(holder, reference)
+            try:
+                first = pool.submit(post_creation, first_client, first_headers, create_body(reference), key)
+                first_pid = wait_until_blocked(observer, first, [holder.info.backend_pid])
+                second = pool.submit(post_creation, second_client, second_headers, create_body(reference), key)
+                # The second request waits on the first one's reserved key.
+                wait_until_blocked(observer, second, [first_pid], exclude=[first_pid])
+                holder.rollback()
+                first, second = first.result(timeout=10), second.result(timeout=10)
+            finally:
+                holder.rollback()
+    after = workflow(database)
+    assert first.status_code == 201, first.text
+    assert first.headers["Idempotency-Replayed"] == "false"
+    assert after["exceptions"] == before["exceptions"] + 1
+    assert len(after["events"]) == len(before["events"]) + 1
+    assert len(after["receipts"]) == len(before["receipts"]) + 1
+    if guard == "kept":
+        assert second.status_code == 201, second.text
+        assert second.headers["Idempotency-Replayed"] == "true"
+        assert second.json() == first.json()
+        assert record["errors"] == []
+    else:
+        assert record["removed"] == 2
+        assert_unconfirmed(second)
+        assert record["errors"] == ["UniqueViolation"]
+
+
+@GUARD
+def test_reference_race_leaves_one_creation_and_a_saved_conflict(app, database, monkeypatch, guard):
+    """Two operators create the same new reference, each with a retry key.
+
+    Both reserve their keys and wait on a held insert of that reference. When
+    the holder rolls back, one of them inserts and the other waits on it. With
+    ON CONFLICT DO NOTHING the loser saves a 409 reference_conflict receipt.
+    Without it the loser fails on the unique reference with a 500 and saves no
+    receipt. Which operator wins is up to PostgreSQL, so the test checks the
+    outcome and not the winner.
+    """
+    reference = "ISO-REFERENCE"
+    with authenticated_client(app) as (alex, alex_headers), authenticated_client(
+        app, "sam@northline.example"
+    ) as (sam, sam_headers):
+        before = workflow(database)
+        record = watch_statements(monkeypatch, guard, REFERENCE_CONFLICT, caller="create")
+        with psycopg.connect(database) as holder, psycopg.connect(
+            database, autocommit=True, row_factory=dict_row
+        ) as observer, ThreadPoolExecutor(max_workers=2) as pool:
+            hold_reference(holder, reference)
+            holder_pid = holder.info.backend_pid
+            try:
+                first = pool.submit(post_creation, alex, alex_headers, create_body(reference), str(uuid4()))
+                first_pid = wait_until_blocked(observer, first, [holder_pid])
+                second = pool.submit(post_creation, sam, sam_headers, create_body(reference), str(uuid4()))
+                wait_until_blocked(observer, second, [holder_pid], exclude=[first_pid])
+                holder.rollback()
+                responses = [first.result(timeout=10), second.result(timeout=10)]
+            finally:
+                holder.rollback()
+    after = workflow(database)
+    statuses = sorted(response.status_code for response in responses)
+    assert after["exceptions"] == before["exceptions"] + 1
+    assert len(after["events"]) == len(before["events"]) + 1
+    if guard == "kept":
+        assert statuses == [201, 409], [response.text for response in responses]
+        loser = next(response for response in responses if response.status_code == 409)
+        assert loser.json()["error"]["code"] == "reference_conflict"
+        assert len(after["receipts"]) == len(before["receipts"]) + 2
+        assert record["errors"] == []
+    else:
+        assert record["removed"] == 2
+        assert statuses == [201, 500], [response.text for response in responses]
+        assert_unconfirmed(next(response for response in responses if response.status_code == 500))
+        assert record["errors"] == ["UniqueViolation"]
+        assert len(after["receipts"]) == len(before["receipts"]) + 1
+
+
+def test_a_lookup_inside_the_insert_statement_misses_a_receipt_committed_while_it_waited(database):
+    """Why the receipt lookup is a separate statement.
+
+    A held transaction reserves a retry key. A second transaction tries the
+    same key with the insert and the lookup in one statement. The conflict
+    check waits, then skips the insert because the first transaction
+    committed. The lookup in that same statement still reads the snapshot taken
+    before the commit, so it finds no receipt. The next statement takes a fresh
+    snapshot and sees the receipt, which is what the application's separate
+    lookup relies on.
+    """
+    key = uuid4()
+
+    def retry():
+        with psycopg.connect(database, row_factory=dict_row, options="-c lock_timeout=5000") as conn:
+            combined = conn.execute(
+                """WITH inserted AS (
+                       INSERT INTO mutation_requests(organization_id,actor_id,key,fingerprint)
+                       VALUES (%s,%s,%s,'retry') ON CONFLICT DO NOTHING RETURNING key)
+                   SELECT (SELECT count(*) FROM inserted) AS inserted,
+                          (SELECT fingerprint FROM mutation_requests
+                           WHERE organization_id=%s AND actor_id=%s AND key=%s) AS seen""",
+                (NORTHLINE, ALEX, key, NORTHLINE, ALEX, key)).fetchone()
+            separate = conn.execute(
+                "SELECT fingerprint AS seen FROM mutation_requests WHERE organization_id=%s AND actor_id=%s AND key=%s",
+                (NORTHLINE, ALEX, key)).fetchone()
+        return combined, separate
+
+    with psycopg.connect(database) as holder, psycopg.connect(
+        database, autocommit=True, row_factory=dict_row
+    ) as observer, ThreadPoolExecutor(max_workers=1) as pool:
+        holder.execute("INSERT INTO mutation_requests(organization_id,actor_id,key,fingerprint) VALUES (%s,%s,%s,'held')",
+                       (NORTHLINE, ALEX, key))
+        try:
+            future = pool.submit(retry)
+            wait_until_blocked(observer, future, [holder.info.backend_pid])
+            holder.commit()
+            combined, separate = future.result(timeout=10)
+        finally:
+            holder.rollback()
+    assert combined == {"inserted": 0, "seen": None}
+    assert separate == {"seen": "held"}
 
 
 @LOCK

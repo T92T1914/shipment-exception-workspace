@@ -479,10 +479,11 @@ replay, organization isolation, session/context and CSRF rejection, stale
 versions, creation and reference races, conflicting retry keys, rollback and
 schema upgrade preservation. Isolation checks hold a real database lock until
 PostgreSQL reports the competing work waiting on it, then run the same race
-with that lock removed to show what each lock prevents. Logout holds no lock,
-so its check pins the stated limit instead. History checks cover bounded detail responses,
-complete older page traversal, strict untrusted cursors and a version fence
-across later appends. Session context checks cover rotation, stale context
+with that lock or conflict clause removed to show what each one prevents.
+Logout holds no lock, so its check pins the stated limit instead, and a
+database level check shows why the receipt lookup is its own statement. History
+checks cover bounded detail responses, complete older page traversal, strict
+untrusted cursors and a version fence across later appends. Session context checks cover rotation, stale context
 denials without new business/receipt effects, current role enforcement and
 backward compatible header omission. Installed consumer and headless acceptance exercise
 the built application outside the checkout, including desktop, narrow mobile,
