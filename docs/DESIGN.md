@@ -460,6 +460,72 @@ credential. Its response is historical:
 another accepted change may already have advanced the record, so the UI refreshes
 the detail after success rather than treating the saved response as current state.
 
+## Write route isolation
+
+Each request opens its own connection in autocommit mode, and each business
+write runs in one explicit transaction at READ COMMITTED. At that level a plain
+`SELECT` returns the last committed row and never waits. So whenever the server
+reads something, decides, and then writes because of what it read, something
+has to stop another transaction from changing that row in between. The table
+lists every such read and write on the five write routes and what covers it.
+
+| Route | Read, then write | Covered by |
+| --- | --- | --- |
+| Create, assign, resolve | Actor's organization and role, then the business write | `FOR SHARE` on the actor's `users` row, held until commit |
+| Create, assign, resolve | Receipt for the retry key, then the change | Primary key of `mutation_requests`. A second insert of the same key waits for the first transaction, then a fresh statement reads its receipt |
+| Create | Reference unused in the organization, then the new row | Unique `(organization_id, reference)` through `ON CONFLICT DO NOTHING` |
+| Assign, resolve | Version, status and assignee of the exception, then the update and its audit event | `FOR UPDATE` on the exception row |
+| Assign | Assignee belongs to the organization, then the update | An unlocked read. The composite foreign key to `users(organization_id, id)` locks the assignee row `FOR KEY SHARE` when the update runs |
+| Login | Global and identifier counters, then their new values | `FOR UPDATE` on the singleton `login_global` row |
+| Login in the public demo | Live session count, then the replacement session | Advisory transaction lock `SESSION_LOCK`, taken before the old row is deleted so rotation and expiry cleanup share one lock order |
+| Logout | The session row, then its deletion | Nothing. It is one delete keyed by the token digest, and a repeat deletes nothing more |
+
+`tests/test_isolation.py` stages the race for each lock instead of hoping for
+it. A holder transaction takes the lock, the competing requests start, and the
+test waits until PostgreSQL reports each one blocked before the holder lets go.
+Each lock test runs twice. The second run removes the locking clause from the
+one application statement it names, and asserts the anomaly that clause
+prevents.
+
+- Assign and resolve without the row lock. Two operators edit from version 1.
+  Both read version 1 and both update. The unique audit version
+  `(exception_id, version)` rejects the second event, so nothing is corrupted,
+  but the loser gets a 500 saying the change could not be confirmed and no
+  receipt is saved. With the lock the loser waits, reads version 2 and gets a
+  saved 409 `version_conflict`. The constraint keeps the data right. The lock
+  keeps the answer right.
+- Create without `FOR SHARE`. A demotion of the actor arrives while an admitted
+  creation is still open. Without the lock the demotion commits first, and the
+  demoted operator's creation commits after it. With the lock the demotion waits
+  for the creation, which is the ordering rule under Operator and reviewer
+  access.
+- Login without the budget row lock. Two admissions both read a count of zero,
+  and the later write replaces the earlier one. Two password verifications run
+  and the budget records one. With the lock it records two.
+- Demo login with its advisory lock moved after the deletion. The sign in holds
+  its old session row while it waits for the session lock. An admission holding
+  that lock waits for the same expired row in its cleanup. PostgreSQL ends the
+  cycle by aborting one of them, and the test accepts either. With the lock
+  taken first, both succeed.
+
+Two reads stay unlocked on purpose. The session lookup runs in autocommit before
+any business transaction starts, so a logout or expiry that commits after it
+does not stop a write already past it. That is the stated limit that logout is
+not instantaneous revocation, and the logout test pins it. Closing it would mean
+locking the session row inside every business transaction. That would change a
+stated limit, which is outside this audit. The assignee lookup is the other. No route deletes a user or
+moves one to another organization, so only a privileged database change could
+race it, and then the foreign key fails the update and the whole transaction
+rolls back.
+
+Lock order is the same everywhere: the actor row, then the receipt key, then
+the exception row. In the public demo, login takes the session lock before it
+touches any session row. Logout deletes only its own row in a single statement and never waits on
+the session lock, so it cannot close a cycle with admission. The receipt and
+reference races in `test_api.py` and `test_intake.py` start both requests at a
+barrier, so they do not prove the requests overlapped. The unique indexes decide
+those races whatever the timing.
+
 ## Browser recovery
 
 The sign in form handles 429 separately from an incorrect password response.

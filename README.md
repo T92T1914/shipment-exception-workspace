@@ -477,7 +477,10 @@ $env:SHIPMENT_TEST_DATABASE_URL = $db.test_url
 The suite includes operator/reviewer access, role change ordering, denied receipt
 replay, organization isolation, session/context and CSRF rejection, stale
 versions, creation and reference races, conflicting retry keys, rollback and
-schema upgrade preservation. History checks cover bounded detail responses,
+schema upgrade preservation. Isolation checks hold a real database lock until
+PostgreSQL reports the competing work waiting on it, then run the same race
+with that lock removed to show what each lock prevents. Logout holds no lock,
+so its check pins the stated limit instead. History checks cover bounded detail responses,
 complete older page traversal, strict untrusted cursors and a version fence
 across later appends. Session context checks cover rotation, stale context
 denials without new business/receipt effects, current role enforcement and
