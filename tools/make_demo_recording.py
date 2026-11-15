@@ -11,19 +11,11 @@ from pathlib import Path
 
 CASES = {
     # Output name: (test title, which video of that test to cut).
-    # The stale tab test opens a second page. That page is the one that meets the conflict.
-    "stale-tab-refused.gif": ("two tabs reject a stale assignment and refresh before a new change", "shortest"),
+    # The stale tab test opens a second page without signing in. Its video is the smaller of the two.
+    "stale-tab-refused.gif": ("two tabs reject a stale assignment and refresh before a new change", "smallest"),
     "retry-returns-saved-result.gif": ("retry retrieves a committed assignment after its real HTTP response is dropped", "only"),
 }
 MAX_BYTES = 6 * 1024 * 1024
-
-
-def duration(video: Path) -> float:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(video)],
-        check=True, capture_output=True, text=True,
-    ).stdout.strip()
-    return float(out)
 
 
 def collect(results: Path) -> dict:
@@ -54,11 +46,11 @@ def pick(found: dict, title: str, which: str) -> Path:
         if len(videos) != 1:
             raise SystemExit(f"Expected one video for {title}, found {len(videos)}")
         return videos[0]
-    return min(videos, key=duration)
+    return min(videos, key=lambda v: v.stat().st_size)
 
 
 def to_gif(video: Path, target: Path) -> None:
-    graph = "fps=8,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none"
+    graph = "setpts=2.0*PTS,fps=8,scale=800:-1:flags=lanczos,tpad=stop_mode=clone:stop_duration=3,split[a][b];[a]palettegen=max_colors=64[p];[b][p]paletteuse=dither=none"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vf", graph, "-loop", "0", str(target)], check=True)
 
 
@@ -74,7 +66,7 @@ def main() -> int:
         target = args.output / name
         to_gif(video, target)
         size = target.stat().st_size
-        print(f"{name}: {size} bytes from {video.parent.name}/{video.name} ({duration(video):.1f} s)")
+        print(f"{name}: {size} bytes from {video.parent.name}/{video.name}")
         if size > MAX_BYTES:
             print(f"{name} is over {MAX_BYTES} bytes", file=sys.stderr)
             return 1
