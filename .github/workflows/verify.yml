@@ -82,6 +82,8 @@ jobs:
           npm run test:e2e
       - name: Cut the recorded demo from the browser run
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg
           python3 tools/make_demo_recording.py --results frontend/test-results --output "$RUNNER_TEMP/demo"
       - name: Preserve the recorded demo
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
