@@ -38,6 +38,12 @@ Start with the [download and local installation guide](docs/install.md) or the
 actual creation, conflicting edits, an interrupted response, receipt replay and
 resolution in the installed application.
 
+These two recordings come from the automated browser tests, run against the installed application. The first shows the second of two tabs meeting a refused stale assignment and then saving after a refresh. The second shows a retry returning the saved assignment after its response was dropped.
+
+![Second browser tab refused for a stale version, then refreshed and saved](docs/assets/stale-tab-refused.gif)
+
+![Retry returning the saved assignment after a dropped response](docs/assets/retry-returns-saved-result.gif)
+
 [Open the hosted synthetic demo](https://shipment-employer-demo.onrender.com/)
 and choose `Enter synthetic demo`. It supplies its separate public reviewer
 credential. Browse the Northline queue, search references, inspect details and
