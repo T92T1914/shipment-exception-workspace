@@ -28,8 +28,8 @@ def database_url():
     return value
 
 
-@pytest.fixture()
-def database(database_url):
+def reset_database(database_url):
+    """Empty every table and seed the synthetic records again."""
     with psycopg.connect(database_url, autocommit=True, row_factory=dict_row) as conn:
         conn.execute(
             "TRUNCATE login_identifiers, sessions, mutation_requests, exception_events, "
@@ -37,6 +37,11 @@ def database(database_url):
         )
         conn.execute("UPDATE login_global SET attempts=0,reset_at=clock_timestamp() WHERE singleton=true")
     seed(database_url, TEST_PASSWORD)
+
+
+@pytest.fixture()
+def database(database_url):
+    reset_database(database_url)
     return database_url
 
 
