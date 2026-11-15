@@ -8,7 +8,7 @@ include tools/capacity-protocol.json
 include docs/capacity-results.json
 include tools/restored_browser.cjs
 include tools/public_demo_browser.cjs
-include tools/requirements-presentation.txt
+include tools/requirements-presentation.txt tools/requirements-test.txt
 include docs/workflow-explainer.json docs/workflow-rendering.json
 include docs/assets/workflow-obscur-wide.svg docs/assets/workflow-obscur-narrow.svg
 recursive-include site *.html *.css *.js
