@@ -4,15 +4,16 @@ The input is the test-results folder of a run with WORKSPACE_RECORD_DEMO set.
 Nothing here starts the application or touches a database.
 """
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 CASES = {
-    # Output name: (test folder prefix, which video of that test to cut).
+    # Output name: (test title, which video of that test to cut).
     # The stale tab test opens a second page. That page is the one that meets the conflict.
-    "stale-tab-refused.gif": ("workspace-two-tabs-reject-a-stale", "shortest"),
-    "retry-returns-saved-result.gif": ("workspace-retry-retrieves-a-committed", "only"),
+    "stale-tab-refused.gif": ("two tabs reject a stale assignment and refresh before a new change", "shortest"),
+    "retry-returns-saved-result.gif": ("retry retrieves a committed assignment after its real HTTP response is dropped", "only"),
 }
 MAX_BYTES = 6 * 1024 * 1024
 
@@ -25,16 +26,33 @@ def duration(video: Path) -> float:
     return float(out)
 
 
-def pick(results: Path, prefix: str, which: str) -> Path:
-    folders = [d for d in results.iterdir() if d.is_dir() and d.name.startswith(prefix)]
-    if len(folders) != 1:
-        raise SystemExit(f"Expected one test folder starting with {prefix}, found {len(folders)}")
-    videos = sorted(folders[0].glob("*.webm"))
+def collect(results: Path) -> dict:
+    """Map each test title to its video files, read from the JSON report."""
+    report = json.loads((results / "results.json").read_text(encoding="utf-8"))
+    found: dict = {}
+
+    def walk(suite):
+        for spec in suite.get("specs", []):
+            for test in spec.get("tests", []):
+                for run in test.get("results", []):
+                    for item in run.get("attachments", []):
+                        if item.get("contentType") == "video/webm" and item.get("path"):
+                            found.setdefault(spec["title"], []).append(Path(item["path"]))
+        for child in suite.get("suites", []):
+            walk(child)
+
+    for suite in report.get("suites", []):
+        walk(suite)
+    return found
+
+
+def pick(found: dict, title: str, which: str) -> Path:
+    videos = [v for v in found.get(title, []) if v.exists()]
     if not videos:
-        raise SystemExit(f"No video in {folders[0].name}")
+        raise SystemExit(f"No video for the test: {title}. Tests with video: {sorted(found)}")
     if which == "only":
         if len(videos) != 1:
-            raise SystemExit(f"Expected one video in {folders[0].name}, found {len(videos)}")
+            raise SystemExit(f"Expected one video for {title}, found {len(videos)}")
         return videos[0]
     return min(videos, key=duration)
 
@@ -50,8 +68,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    for name, (prefix, which) in CASES.items():
-        video = pick(args.results, prefix, which)
+    found = collect(args.results)
+    for name, (title, which) in CASES.items():
+        video = pick(found, title, which)
         target = args.output / name
         to_gif(video, target)
         size = target.stat().st_size
