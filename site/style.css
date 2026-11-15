@@ -1,5 +1,5 @@
-/* Family roles pinned to clair-obscur-themes 7a57fe750ff50205a17e1d342106a0d3f2777159. */
-:root { color-scheme: dark; --canvas:#090909; --panel:#151515; --text:#f4f4f4; --muted:#bcbcbc; --border:#858585; --accent:#b3c8d8; --focus:#c2d7e6; }
+/* Obscur from tokens-monochrome.json 1.0.0 at clair-obscur-themes 4693831b51f2b3fa268d830fd9b977fb70c83e3d. Clair keeps the earlier pinned roles from 7a57fe750ff50205a17e1d342106a0d3f2777159. */
+:root { color-scheme: dark; --canvas:#000000; --panel:#151515; --text:#ffffff; --muted:#cccccc; --border:#999999; --accent:#ffffff; --focus:#ffffff; }
 :root[data-appearance="clair"] { color-scheme:light; --canvas:#f8f7f3; --panel:#fdfcf8; --text:#242424; --muted:#595854; --border:#7f7d76; --accent:#365f78; --focus:#315977; }
 * { box-sizing:border-box; }
 html { background:var(--canvas); color:var(--text); font:112.5%/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
