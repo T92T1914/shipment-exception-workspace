@@ -538,6 +538,75 @@ is why `reserve` reads the receipt in a separate statement. The duplicate
 request race for assignment in `test_api.py` still starts at a barrier, and it
 runs through the same `reserve` code.
 
+## Checking concurrent histories against a model
+
+The staged races above test the interleavings I thought of. This check looks for
+the ones I did not. It has three parts, all under `tests`.
+
+`workflow_model.py` is the model. It is plain Python with no database. It states
+what each write must answer and what it must leave behind when requests arrive
+one at a time: a reviewer cannot write, a retry key belongs to one actor and one
+request body, a new request is checked in a fixed order, every answer is saved
+as the receipt for its key, and a success raises the version by one and adds one
+audit event. `test_workflow_model.py` drives the installed application against
+it one call at a time with a Hypothesis state machine, and three runs with a
+deliberately wrong model rule show that the test can fail.
+
+`test_concurrent_history.py` records histories. Four clients share the Northline
+records: two sessions of Alex, one of Sam and one of Casey, who may only read.
+A history is ten rounds, and every call of a round starts at one barrier, so the
+calls of a round are in flight together. The test saves when each call was sent,
+when its answer came back and what it said, then reads back every exception, its
+audit events and the retry receipts. A seed chooses the rounds that carry six
+forced faults: a dropped acknowledgement, a dropped request, a retry on the same
+key of both lost calls, a double delivery, a contest of two or three operators
+for one exception from the version they all just read, and a stale version. A
+seeded stall after the exception read widens the window for the contest. The
+other rounds draw reads, edits, creations, retries and a reused key with another
+body at random.
+
+`history_check.py` is the checker. A history passes when, for each exception,
+some order of its calls respects real time and the model gives every answered
+call the answer its client saw, and when the model ends holding exactly the
+stored exception, audit events and receipts. A call whose answer never arrived
+may have happened anywhere after it was sent, or not at all. Across the whole
+history, no retry key may report two new changes and no answer may be a 500.
+
+The default run uses seeds 1 to 16. In the pull request check on PostgreSQL 18.1
+it kept 16 histories with 489 calls, 58 lost answers and 247 pairs of calls on
+one exception in flight together, and all of them passed. The histories are
+uploaded as the `concurrent-histories` artifact. A wider local run of 80 seeds
+made 2447 calls and found no fault in the application.
+
+A pass says that each recorded history had an order the model accepts. It does
+not prove the routes correct, because it says nothing about interleavings that
+did not happen. A seed fixes the fault plan and every random draw, but not how
+the threads interleave, and the clients act on the versions their answers show.
+A failure therefore replays from its saved history, not from its seed. The
+clients run in process through the FastAPI test client against a real
+PostgreSQL, and a dropped answer is dropped by the test after the server
+finished, not by a network. Sessions, logout and role changes are not part of
+these histories. The no 500 rule assumes a healthy database, and the outage
+tests cover the unhealthy one.
+
+Each of three guards is removed in turn, using seeds 1 to 3, by rebuilding the
+application from the installed module with one line changed. All three were
+caught on every seed, but not in the same way.
+
+| Guard removed | Checker verdict | What the checker sees |
+| --- | --- | --- |
+| Version check | `no_order` | A write from an old version is answered 200 and changes the record, so no order of the calls fits the model |
+| `ON CONFLICT DO NOTHING` on the receipt insert | `unconfirmed_answer` | Every retry or second delivery of a saved key gets a 500 |
+| `FOR UPDATE` on the exception read | `unconfirmed_answer` | Contenders read the same version and the unique audit version turns the loser into a 500 |
+
+The checker catches the removed receipt clause and the removed row lock only
+through the rule that no answer is a 500. If every 500 were read as a lost
+answer, both histories would pass, because the receipt primary key and the
+unique audit version keep the stored state right without those two guards. This
+is the same finding as the isolation audit above. The constraint keeps the data
+right and the lock keeps the answer right, and this checker is strict about
+answers because it has to be.
+
 ## Browser recovery
 
 The sign in form handles 429 separately from an incorrect password response.
