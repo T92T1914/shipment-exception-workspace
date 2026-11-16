@@ -146,6 +146,13 @@ class Model:
     def _view(item):
         return tuple(item[name] for name in VIEW_FIELDS)
 
+    def read(self, reference) -> Reply:
+        """What a read of one exception must answer. A read changes nothing."""
+        item = self.items.get(reference)
+        if item is None:
+            return Reply(404, code="not_found")
+        return Reply(200, view=self._view(item))
+
     # What a read of the stored state must show once the writes are done.
 
     def stored_exceptions(self):
