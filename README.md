@@ -16,6 +16,12 @@ integration or operational users. [Executed verification](docs/VERIFICATION.md)
 records the tested revision and results. [Design](docs/DESIGN.md) explains the
 authorization and transaction boundaries.
 
+Two parts of the design are checked by removing a guard and watching a test fail.
+The [write route isolation audit](docs/DESIGN.md#write-route-isolation) stages
+each lock race on PostgreSQL. The [concurrent history check](docs/DESIGN.md#checking-concurrent-histories-against-a-model)
+runs several clients at once under seeded faults and compares what they saw with
+a sequential model. It is a sampled run, so a pass is not a proof.
+
 The [local capacity and recovery study](docs/capacity-study.md) qualifies one
 declared synthetic Windows/PostgreSQL workload. All 5,400 measured requests
 completed correctly across 24 fresh state replicates. The larger fixture
