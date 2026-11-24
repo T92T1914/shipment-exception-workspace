@@ -76,16 +76,19 @@ name its own identity, organization or role.
 | The public visitor writes, or reaches a stock account | Role | `test_public_demo.py::test_public_direct_reads_and_business_denials_preserve_organization_and_receipts`, `test_public_demo.py::test_public_session_refuses_promoted_reviewer_or_preexisting_operator_cookie` |
 | A forged Host or forwarded header grants authority in public mode | Session | `test_public_demo.py::test_public_origin_csrf_host_and_forwarded_headers_cannot_grant_authority` |
 | A change commits without its audit event, or under the wrong actor | Audit | `test_api.py::test_assignment_and_resolution_commit_versions_and_audit_events`, `test_api.py::test_database_failure_rolls_back_exception_event_and_retry_receipt` |
-| An audit event is edited or deleted through an HTTP route | Audit | No test yet. The routes in `app.py` today have none that touch events, and nothing fails if one is added. |
-| A password hash from the stock seed is stored as plain text | Session | No test yet. `test_public_demo.py::test_empty_provisioning_separates_public_password_from_all_stock_accounts` verifies hashes for the public mode accounts only. |
+| An audit event is edited or deleted through an HTTP route | Audit | `test_audit_routes.py::test_no_route_edits_or_deletes_an_earlier_audit_event` walks every registered route as an operator, a reviewer, an operator of the other organization and a caller with no session. It fails if a request changes or removes an earlier event, or sends a statement that updates, deletes, truncates, merges into or upserts the events table. The walk must reach every registered route, and `test_audit_routes.py::test_a_registered_route_the_walk_never_reaches_is_reported` shows that a route it misses is reported. There is no guard in the code to remove, so its fault runs plant a route that edits or deletes an event and rewrite the write path to delete one, and the walk reports each. The rows are not sealed against a privileged database operator, as [limits](docs/LIMITATIONS.md) says. |
+| A password hash from the stock seed is stored as plain text | Session | `test_stored_credentials.py::test_stock_seed_stores_only_argon2id_hashes_and_the_password_nowhere` reads every stock account and requires an Argon2id hash with the application's parameters that verifies the seed password. It also searches every table in the public schema for the password text. Its removed run replaces the application's hasher, in the seed and in sign in, with one that stores and compares plain text. Sign in still succeeds there, and the test reports all six accounts and the users table. |
 | A privileged database operator reads or changes records, roles or audit events | Audit | Not defended. [Limits](docs/LIMITATIONS.md) says there is no row level security and that audit events are ordinary rows, not sealed. |
 | Timing differences reveal a known address | Session | Not tested. [Limits](docs/LIMITATIONS.md) says broad timing resistance has not been established. |
 | A flood of requests exhausts the service | Query | Not defended beyond the bounds in [limits](docs/LIMITATIONS.md). Page and body sizes are capped, which does not bound scan time. |
 | A dependency has a known vulnerability | Session | Not defended. [Limits](docs/LIMITATIONS.md) says the pins describe the tested environment and guarantee nothing more. |
 
-Two rows have no test. I have not written those tests yet, and the table says so
-rather than implying coverage. Each belongs with a removed guard run, as
-`tests/test_isolation.py` does, so they are a separate piece of work.
+Two rows had no test when I first wrote this table. Both have one now, and each
+runs with its fault in place in the pull request check, the way
+`tests/test_isolation.py` does. The audit route row differs in one way. There is
+no guard in the code to take out, because events stay as written only since no
+route sends a statement that changes them. So its fault runs add what a missing
+guard would allow instead, and the walk must report each one.
 
 ## Operator and reviewer boundaries
 
