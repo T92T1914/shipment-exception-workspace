@@ -22,6 +22,10 @@ each lock race on PostgreSQL. The [concurrent history check](docs/DESIGN.md#chec
 runs several clients at once under seeded faults and compares what they saw with
 a sequential model. It is a sampled run, so a pass is not a proof.
 
+The [threat model](SECURITY.md#threat-model) names who could misuse the
+application and ties each threat to the test that covers it or the stated limit
+that accepts it.
+
 The [local capacity and recovery study](docs/capacity-study.md) qualifies one
 declared synthetic Windows/PostgreSQL workload. All 5,400 measured requests
 completed correctly across 24 fresh state replicates. The larger fixture

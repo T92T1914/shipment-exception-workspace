@@ -1,5 +1,7 @@
 # Create, recover and resolve one synthetic exception
 
+Three behaviors below protect the person doing the work. A refused stale edit keeps Alex from overwriting a newer assignment saved after the page loaded. A warning after an interrupted response, and a retry of the same change, keep Alex from guessing whether the change was saved or saving it twice. The history records who made each change and in what order, so anyone reading the record later can see how it reached its state.
+
 This walkthrough follows an actual installed v0.9.0 operator journey on October 26, 2026. Alex creates a synthetic shipment exception, handles a stale edit and an interrupted response, then records its resolution. React, the Python API and PostgreSQL supplied the displayed state. The screenshots are captures of the application, with no substituted interface or invented history.
 
 Public demo mode is a reviewer experience. Visitors can browse records and history, but cannot perform the operator actions below. Its provisioned demonstration history is separate from this executed local workflow. These captures do not establish that a public deployment is running.
