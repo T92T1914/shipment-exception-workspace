@@ -26,6 +26,67 @@ tamper-proof audit log. See [limitations](docs/LIMITATIONS.md) and the
 [executed verification record](docs/VERIFICATION.md) before interpreting a
 security claim.
 
+## Threat model
+
+This section says what the application protects, who could misuse it, where
+trust changes, and which test or stated limit answers each threat. It covers
+the synthetic demonstration as it runs today and nothing wider. A row that names
+a test means that test fails if the guard is removed from the code it exercises.
+That is a claim about the guard, not a claim that the application resists a
+determined attacker.
+
+**Assets.** The shipment exception records of each organization. The audit
+events that explain how each record changed. The saved retry responses. The
+session cookie and its CSRF token. The password hashes. The role stored on each
+user row.
+
+**Actors.** An operator, who may create, assign, unassign and resolve records in
+their own organization. A reviewer, who may only read their own organization. An
+operator or reviewer of the other organization. A person with no session. The
+public visitor of the hosted demo, who may only read. A person holding a stale
+tab, an old cookie or a copied cursor. A privileged database operator, who is
+outside what the application can defend.
+
+**Trust boundaries.** The browser to the API, where the Origin, the CSRF token,
+the session cookie and the optional `X-Workspace-Context` header are checked.
+The API to PostgreSQL, where the current user row decides role and organization
+and where constraints and row locks back the application checks. The public
+mode edge, where the configured Host and canonical HTTPS origin are checked and
+forwarded headers supply no authority. Nothing a client sends is trusted to
+name its own identity, organization or role.
+
+| Threat | Path | Covered by |
+| --- | --- | --- |
+| A signed in user reads or changes another organization's record | Session | `test_api.py::test_list_members_detail_and_mutations_are_organization_scoped`, `test_api.py::test_cross_organization_assignment_is_rejected_by_api_and_database` |
+| A reviewer attempts a write or a receipt replay | Role | `test_roles.py::test_every_reviewer_write_denies_without_business_or_receipt_changes`, `test_roles.py::test_role_denial_precedes_saved_receipt_replay_and_preserves_that_receipt` |
+| A caller forges a role, identity or organization header | Role | `test_roles.py::test_forged_role_identity_and_organization_headers_do_not_grant_access`, `test_intake.py::test_intake_uses_authenticated_organization_even_with_a_spoofed_header` |
+| An operator demoted after sign in keeps writing | Role | `test_roles.py::test_current_database_role_changes_existing_session_without_another_login`, `test_roles.py::test_a_stale_operator_principal_waits_for_role_update_then_denies`. A request admitted before the demotion can finish, and [limits](docs/LIMITATIONS.md) accepts that, since there is no instant revocation. |
+| A page on another origin, or a request without the CSRF token, submits a change | Session | `test_api.py::test_login_logout_and_writes_require_exact_origin_and_csrf`, `test_api.py::test_non_ascii_csrf_header_is_rejected_without_mutation_or_logout` |
+| An old or signed out cookie replays a change | Session | `test_api.py::test_invalidated_session_cannot_replay_a_committed_mutation`, `test_api.py::test_login_rotates_session_cookie_and_csrf_and_logout_invalidates_it`, `test_session_context.py::test_expired_cookie_context_cannot_revive_session_and_recovery_issues_anonymous_context` |
+| Someone copies a live cookie | Session | Not prevented. The cookie is HttpOnly and SameSite Strict, asserted in `test_api.py::test_login_rotates_session_cookie_and_csrf_and_logout_invalidates_it`. [Limits](docs/LIMITATIONS.md) says there is no multifactor authentication and no device management. |
+| A reader of the database learns a bearer cookie | Session | `test_api.py::test_database_stores_a_digest_instead_of_the_bearer_cookie` |
+| A tab holding an earlier session writes under a new one | Session | `test_session_context.py::test_stale_context_blocks_all_business_mutations_and_does_not_reserve_keys`, `test_session_context.py::test_stale_context_denies_old_receipt_without_changing_it_and_current_context_replays` |
+| An older tab overwrites a newer edit | Retry | `test_api.py::test_stale_version_cannot_overwrite_a_committed_change`, `test_isolation.py::test_assign_row_lock_turns_a_competing_assignment_into_a_version_conflict` |
+| A retry of a committed request makes a second record or event | Retry | `test_api.py::test_retry_returns_committed_response_and_key_mismatches_do_not_write`, `test_isolation.py::test_same_key_retry_waits_for_the_first_request_and_replays_its_receipt`, `test_api.py::test_same_key_is_independent_for_two_authenticated_actors` |
+| A copied or forged cursor reaches another organization's rows | Query | `test_queue.py::test_foreign_cursor_is_rejected_and_forged_own_position_grants_no_foreign_access`, `test_history.py::test_cursor_context_never_supplies_authority_or_cross_record_history` |
+| Search text or a resolution is read as SQL or markup | Query | `test_queue.py::test_search_metacharacters_sql_html_and_unicode_are_literal_data`, `test_api.py::test_sql_and_html_resolution_strings_are_stored_as_data` |
+| An oversized or malformed body changes a record | Query | `test_api.py::test_oversized_request_is_rejected_before_writing`, `test_api.py::test_invalid_mutation_bodies_do_not_change_database` |
+| A failed login reveals which part was wrong, or echoes a credential | Session | `test_api.py::test_login_failures_are_generic_and_do_not_echo_credentials` |
+| Password guessing, or a flood of sign ins | Session | `test_login_admission.py::test_identifier_admits_twenty_verifications_then_denies_without_extending_state`, `test_login_admission.py::test_global_budget_admits_forty_distinct_identifiers_then_allocates_no_denied_row`. A caller can use up the global budget and block new sign ins for a window, and [limits](docs/LIMITATIONS.md) accepts that. |
+| The public visitor writes, or reaches a stock account | Role | `test_public_demo.py::test_public_direct_reads_and_business_denials_preserve_organization_and_receipts`, `test_public_demo.py::test_public_session_refuses_promoted_reviewer_or_preexisting_operator_cookie` |
+| A forged Host or forwarded header grants authority in public mode | Session | `test_public_demo.py::test_public_origin_csrf_host_and_forwarded_headers_cannot_grant_authority` |
+| A change commits without its audit event, or under the wrong actor | Audit | `test_api.py::test_assignment_and_resolution_commit_versions_and_audit_events`, `test_api.py::test_database_failure_rolls_back_exception_event_and_retry_receipt` |
+| An audit event is edited or deleted through an HTTP route | Audit | No test yet. The routes in `app.py` today have none that touch events, and nothing fails if one is added. |
+| A password hash from the stock seed is stored as plain text | Session | No test yet. `test_public_demo.py::test_empty_provisioning_separates_public_password_from_all_stock_accounts` verifies hashes for the public mode accounts only. |
+| A privileged database operator reads or changes records, roles or audit events | Audit | Not defended. [Limits](docs/LIMITATIONS.md) says there is no row level security and that audit events are ordinary rows, not sealed. |
+| Timing differences reveal a known address | Session | Not tested. [Limits](docs/LIMITATIONS.md) says broad timing resistance has not been established. |
+| A flood of requests exhausts the service | Query | Not defended beyond the bounds in [limits](docs/LIMITATIONS.md). Page and body sizes are capped, which does not bound scan time. |
+| A dependency has a known vulnerability | Session | Not defended. [Limits](docs/LIMITATIONS.md) says the pins describe the tested environment and guarantee nothing more. |
+
+Two rows have no test. I have not written those tests yet, and the table says so
+rather than implying coverage. Each belongs with a removed guard run, as
+`tests/test_isolation.py` does, so they are a separate piece of work.
+
 ## Operator and reviewer boundaries
 
 Public mode admits only the separately provisioned visitor identity in Northline.
